@@ -1,15 +1,87 @@
-# mcp-gateway
+# MCP Gateway
 
-To install dependencies:
+An alpha MCP multiplexing gateway for exposing multiple downstream MCP servers through one authenticated endpoint.
+
+It currently supports:
+
+- inbound MCP over SSE
+- downstream MCP servers over stdio or SSE
+- namespaced tool and resource aggregation
+- API-key authentication with bcrypt-hashed keys
+- per-tool RBAC with default deny
+- per-caller and per-server rate limiting
+- circuit breaking for unhealthy downstreams
+- append-only PostgreSQL audit logging
+- Docker packaging as a compiled Bun binary
+
+## Status
+
+This repository is an alpha implementation. The current runtime path is buildable and the test suite passes, but TypeScript declaration checking is not clean yet because the code still has SSE typing work to resolve and upstream dependency declarations surface additional noise under the current toolchain.
+
+## Requirements
+
+- Bun 1.x
+- PostgreSQL 16+ for auth and audit storage
+- downstream MCP servers reachable over stdio or SSE
+
+## Quick Start
 
 ```bash
 bun install
+cp config.example.yaml config.yaml
+export DATABASE_URL=postgres://gateway:gateway@localhost:5432/gateway
+bun run src/server.ts
 ```
 
-To run:
+The gateway listens on `http://0.0.0.0:3000` by default.
+
+To run the test suite:
 
 ```bash
-bun run index.ts
+bun test
 ```
 
-This project was created using `bun init` in bun v1.3.13. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.
+To build the server bundle:
+
+```bash
+bun build src/server.ts --target=bun --outdir dist
+```
+
+## Configuration
+
+Start from [`config.example.yaml`](./config.example.yaml). The sample config demonstrates:
+
+- a local stdio server (`sqlite`)
+- a remote SSE server (`github`)
+- API-key header configuration
+- rate limits
+- circuit-breaker settings
+- PostgreSQL-backed audit logging
+
+Secrets should be supplied through environment variables or encrypted `enc:` values. Do not commit real credentials in `config.yaml`.
+
+## Security Notes
+
+- RBAC defaults to deny when no matching policy exists.
+- Audit rows are append-only at the database layer.
+- Raw API keys are never stored, only bcrypt hashes.
+- The sample Docker Compose file uses local development credentials and is not a production deployment guide.
+- Production deployments should terminate TLS, use real database credentials, review downstream server trust, and keep `/debug/*` disabled.
+
+## Repository Layout
+
+- `src/` - gateway implementation
+- `tests/` - Bun test suite
+- `migrations/` - PostgreSQL schema
+- `docker/` - container build and local compose setup
+- `config.example.yaml` - starter configuration
+
+## Known Gaps
+
+- TypeScript `tsc --noEmit` is not clean yet.
+- There is no stable admin CLI for API-key or RBAC management.
+- This alpha does not yet ship a full operator guide or release process.
+
+## Development
+
+See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for contribution guidance and [`SECURITY.md`](./SECURITY.md) for vulnerability reporting expectations.
