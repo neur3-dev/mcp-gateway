@@ -1,11 +1,16 @@
 import { parse } from "yaml";
 import { readFileSync } from "fs";
 import type { GatewayConfig } from "../types";
+import { decryptSecret } from "./secrets";
 
 function interpolateEnv(value: string): string {
   return value.replace(/\$\{([^}]+)\}/g, (_, key) => {
     const val = process.env[key];
     if (val === undefined) throw new Error(`Missing env var: ${key}`);
+    // Decrypt if the env var value is an encrypted secret
+    if (val.startsWith("enc:") && process.env.GATEWAY_SECRET_KEY) {
+      return decryptSecret(val, process.env.GATEWAY_SECRET_KEY);
+    }
     return val;
   });
 }
