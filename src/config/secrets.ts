@@ -13,10 +13,16 @@ export function encryptSecret(plaintext: string, keyHex: string): string {
 
 export function decryptSecret(encoded: string, keyHex: string): string {
   if (!encoded.startsWith("enc:")) return encoded;
-  const parts = encoded.split(":");
-  const ivHex = parts[1];
-  const tagHex = parts[2];
-  const cipherHex = parts[3];
+  // Format is exactly: enc:ivHex:tagHex:cipherHex (all hex, no colons)
+  const withoutPrefix = encoded.slice(4); // remove "enc:"
+  const firstColon = withoutPrefix.indexOf(":");
+  const secondColon = withoutPrefix.indexOf(":", firstColon + 1);
+  if (firstColon === -1 || secondColon === -1) {
+    throw new Error("Invalid encrypted secret format");
+  }
+  const ivHex = withoutPrefix.slice(0, firstColon);
+  const tagHex = withoutPrefix.slice(firstColon + 1, secondColon);
+  const cipherHex = withoutPrefix.slice(secondColon + 1);
   const key = Buffer.from(keyHex, "hex");
   const decipher = createDecipheriv(ALGO, key, Buffer.from(ivHex, "hex"));
   decipher.setAuthTag(Buffer.from(tagHex, "hex"));
