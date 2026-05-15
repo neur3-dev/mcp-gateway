@@ -9,18 +9,23 @@ export interface MCPCall {
   params: Record<string, unknown>;
 }
 
-export interface ServerConfig {
+export interface StdioServerConfig {
   name: string;
-  transport: "stdio" | "sse";
-  // stdio fields
-  command?: string;
+  transport: "stdio";
+  command: string;
   args?: string[];
   env?: Record<string, string>;
-  // sse fields
-  url?: string;
+}
+
+export interface SSEServerConfig {
+  name: string;
+  transport: "sse";
+  url: string;
   headers?: Record<string, string>;
   oauth2?: OAuth2Config;
 }
+
+export type ServerConfig = StdioServerConfig | SSEServerConfig;
 
 export interface OAuth2Config {
   token_url: string;
