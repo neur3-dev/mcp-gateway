@@ -6,6 +6,8 @@ import type { CallerContext } from "../types";
 interface Session {
   transport: WebStandardStreamableHTTPServerTransport;
   server: Server;
+  callerId: string;
+  keyId: string;
 }
 
 const sessions = new Map<string, Session>();
@@ -27,6 +29,11 @@ export function mountSSERoutes(
     const existing = sessionId ? sessions.get(sessionId) : undefined;
 
     if (existing) {
+      // Reject if the authenticated caller doesn't match the session owner
+      if (existing.callerId !== caller.callerId || existing.keyId !== caller.keyId) {
+        set.status = 403;
+        return { error: "Session belongs to a different caller" } as unknown as Response;
+      }
       return existing.transport.handleRequest(request);
     }
 
@@ -34,7 +41,7 @@ export function mountSSERoutes(
     const transport = new WebStandardStreamableHTTPServerTransport({
       sessionIdGenerator: () => randomUUID(),
       onsessioninitialized: (id) => {
-        sessions.set(id, { transport, server });
+        sessions.set(id, { transport, server, callerId: caller.callerId, keyId: caller.keyId });
       },
       onsessionclosed: (id) => {
         sessions.delete(id);

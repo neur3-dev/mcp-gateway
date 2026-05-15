@@ -1,5 +1,6 @@
 import { describe, it, expect } from "bun:test";
 import { loadConfig } from "../src/config/loader";
+import type { SSEServerConfig } from "../src/types";
 import { writeFileSync, unlinkSync } from "fs";
 
 describe("loadConfig", () => {
@@ -34,7 +35,7 @@ audit:
     writeFileSync("/tmp/test-config.yaml", yaml);
     const config = loadConfig("/tmp/test-config.yaml");
     expect(config.gateway.port).toBe(3000);
-    expect(config.servers[0].headers?.Authorization).toBe("Bearer secret123");
+    expect((config.servers[0] as SSEServerConfig).headers?.Authorization).toBe("Bearer secret123");
     unlinkSync("/tmp/test-config.yaml");
   });
 

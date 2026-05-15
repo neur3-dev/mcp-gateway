@@ -4,7 +4,7 @@ An alpha MCP multiplexing gateway for exposing multiple downstream MCP servers t
 
 It currently supports:
 
-- inbound MCP over SSE
+- inbound MCP over streamable HTTP (`/mcp` endpoint, MCP 2025-03-26 spec)
 - downstream MCP servers over stdio or SSE
 - namespaced tool and resource aggregation
 - API-key authentication with bcrypt-hashed keys
@@ -16,7 +16,7 @@ It currently supports:
 
 ## Status
 
-This repository is an alpha implementation. The current runtime path is buildable and the test suite passes, but TypeScript declaration checking is not clean yet because the code still has SSE typing work to resolve and upstream dependency declarations surface additional noise under the current toolchain.
+This repository is an alpha implementation. The runtime path is buildable, the test suite passes, and `tsc --noEmit` is clean.
 
 ## Requirements
 
@@ -78,8 +78,7 @@ Secrets should be supplied through environment variables or encrypted `enc:` val
 
 ## Known Gaps
 
-- TypeScript `tsc --noEmit` is not clean yet.
-- There is no stable admin CLI for API-key or RBAC management.
+- There is no stable admin CLI for API-key or RBAC management yet (planned).
 - This alpha does not yet ship a full operator guide or release process.
 
 ## Development
