@@ -131,3 +131,8 @@ export function buildMCPServer(config: GatewayConfig, caller: CallerContext, db:
 
   return server;
 }
+
+export function sweepRateLimiters(): void {
+  _keyRateLimiter?.sweep();
+  _serverRateLimiter?.sweep();
+}

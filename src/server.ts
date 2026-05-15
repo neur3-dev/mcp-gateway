@@ -4,7 +4,7 @@ import { loadConfig } from "./config/loader";
 import { getDb } from "./db/client";
 import { verifyApiKey } from "./auth/api-keys";
 import { mountSSERoutes } from "./transport/sse-server";
-import { buildMCPServer } from "./multiplexer/router";
+import { buildMCPServer, sweepRateLimiters } from "./multiplexer/router";
 
 const configPath = process.env.CONFIG_PATH ?? "./config.yaml";
 const config = loadConfig(configPath);
@@ -22,3 +22,5 @@ mountSSERoutes(
 
 app.listen({ port: config.gateway.port, hostname: config.gateway.host });
 console.log(`Gateway listening on ${config.gateway.host}:${config.gateway.port}`);
+
+setInterval(() => sweepRateLimiters(), 60_000);
