@@ -1,0 +1,40 @@
+# config.yaml — gateway configuration
+gateway:
+  port: 3000
+  host: "0.0.0.0"
+  transport: "sse"
+  tls:
+    enabled: false
+    cert: "/certs/server.crt"
+    key: "/certs/server.key"
+
+auth:
+  api_key_header: "X-API-Key"
+  bcrypt_rounds: 12
+
+rate_limit:
+  default_rps: 10
+  burst: 20
+  per_server_rps: 50
+
+servers:
+  - name: "sqlite"
+    transport: "stdio"
+    command: "uvx"
+    args: ["mcp-server-sqlite", "--db-path", "/data/app.db"]
+    env: {}
+
+  - name: "github"
+    transport: "sse"
+    url: "https://api.githubcopilot.com/mcp/"
+    headers:
+      Authorization: "Bearer ${GITHUB_TOKEN}"
+
+circuit_breaker:
+  failure_threshold: 5
+  reset_timeout_ms: 30000
+
+audit:
+  enabled: true
+  redact_args: false
+  postgres_url: "${DATABASE_URL}"
