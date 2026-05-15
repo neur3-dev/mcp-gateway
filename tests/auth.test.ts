@@ -66,17 +66,18 @@ describe("RBAC", () => {
 
 describe("listKeys", () => {
   const db = getDb("postgresql://gateway:gateway@localhost:5432/mcp_gateway_test");
+  const testCallerId = `lk-test-${Date.now()}`;
 
   beforeAll(async () => {
-    await db.delete(apiKeys);
-    await createApiKey(db, { name: "alpha", callerId: "lk-test", bcryptRounds: 4 });
-    await createApiKey(db, { name: "beta", callerId: "lk-test", bcryptRounds: 4 });
+    await createApiKey(db, { name: "alpha", callerId: testCallerId, bcryptRounds: 4 });
+    await createApiKey(db, { name: "beta", callerId: testCallerId, bcryptRounds: 4 });
   });
 
   it("returns all keys including both inserted rows", async () => {
     const rows = await listKeys(db);
-    expect(rows.length).toBeGreaterThanOrEqual(2);
-    const names = rows.map((r) => r.name);
+    const ours = rows.filter((r) => r.caller_id === testCallerId);
+    expect(ours.length).toBe(2);
+    const names = ours.map((r) => r.name);
     expect(names).toContain("alpha");
     expect(names).toContain("beta");
   });
@@ -86,7 +87,6 @@ describe("listPolicies", () => {
   const db = getDb("postgresql://gateway:gateway@localhost:5432/mcp_gateway_test");
 
   beforeAll(async () => {
-    await db.delete(rbacPolicies);
     await createPolicy(db, { callerId: "lp-a", toolPattern: "sqlite/*", effect: "allow" });
     await createPolicy(db, { callerId: "lp-a", toolPattern: "github/*", effect: "deny" });
     await createPolicy(db, { callerId: "lp-b", toolPattern: "*", effect: "allow" });
