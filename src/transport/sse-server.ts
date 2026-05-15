@@ -1,45 +1,49 @@
-import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
+import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import type { Elysia } from "elysia";
+import { randomUUID } from "crypto";
 import type { CallerContext } from "../types";
 
-const sessions = new Map<string, SSEServerTransport>();
+interface Session {
+  transport: WebStandardStreamableHTTPServerTransport;
+  server: Server;
+}
+
+const sessions = new Map<string, Session>();
 
 export function mountSSERoutes(
-  app: Elysia,
+  app: { all: (path: string, handler: (ctx: { request: Request; set: { status: number } }) => Promise<Response | { error: string }>) => void },
   buildServer: (caller: CallerContext) => Server,
   getCallerFromKey: (rawKey: string) => Promise<(CallerContext & { keyId: string }) | null>
 ) {
-  app.get("/sse", async ({ request, set }) => {
+  app.all("/mcp", async ({ request, set }) => {
     const rawKey = request.headers.get("X-API-Key") ?? "";
     const caller = await getCallerFromKey(rawKey);
     if (!caller) {
       set.status = 401;
-      return { error: "Invalid or missing API key" };
+      return { error: "Invalid or missing API key" } as unknown as Response;
     }
 
-    const transport = new SSEServerTransport("/messages", set.response as Response);
-    const server = buildServer(caller);
-    sessions.set(transport.sessionId, transport);
+    const sessionId = request.headers.get("mcp-session-id");
+    const existing = sessionId ? sessions.get(sessionId) : undefined;
 
-    await server.connect(transport);
+    if (existing) {
+      return existing.transport.handleRequest(request);
+    }
 
-    // Cleanup session when connection closes
-    server.on("close", () => {
-      sessions.delete(transport.sessionId);
+    // New session
+    const transport = new WebStandardStreamableHTTPServerTransport({
+      sessionIdGenerator: () => randomUUID(),
+      onsessioninitialized: (id) => {
+        sessions.set(id, { transport, server });
+      },
+      onsessionclosed: (id) => {
+        sessions.delete(id);
+      },
     });
 
-    return transport.response;
-  });
+    const server = buildServer(caller);
+    await server.connect(transport);
 
-  app.post("/messages", async ({ request, set }) => {
-    const sessionId = new URL(request.url).searchParams.get("sessionId") ?? "";
-    const transport = sessions.get(sessionId);
-    if (!transport) {
-      set.status = 404;
-      return { error: "Session not found" };
-    }
-    await transport.handlePostMessage(request);
-    return new Response(null, { status: 202 });
+    return transport.handleRequest(request);
   });
 }

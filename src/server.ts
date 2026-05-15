@@ -10,9 +10,9 @@ const configPath = process.env.CONFIG_PATH ?? "./config.yaml";
 const config = loadConfig(configPath);
 const db = getDb(config.audit.postgres_url);
 
-const app = new Elysia()
-  .use(cors())
-  .get("/health", () => ({ status: "ok" }));
+const app = new Elysia().use(cors());
+
+app.get("/health", () => ({ status: "ok" }));
 
 if (process.env.NODE_ENV !== "production") {
   app.get("/debug/config", () => ({
@@ -21,7 +21,7 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 mountSSERoutes(
-  app,
+  app as Parameters<typeof mountSSERoutes>[0],
   (caller) => buildMCPServer(config, caller, db),
   (rawKey) => verifyApiKey(db, rawKey)
 );
