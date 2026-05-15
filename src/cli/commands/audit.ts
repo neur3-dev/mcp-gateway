@@ -21,6 +21,10 @@ export async function auditList(args: string[]): Promise<void> {
   const callerId = parseFlag(args, "--caller");
   const limitStr = parseFlag(args, "--limit");
   const limit = limitStr ? parseInt(limitStr, 10) : 50;
+  if (limitStr && (isNaN(limit) || limit < 1)) {
+    printError("--limit must be a positive integer");
+    process.exit(1);
+  }
 
   const rows = await listAuditEvents(db, { callerId, limit });
   printTable(

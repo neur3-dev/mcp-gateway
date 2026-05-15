@@ -26,6 +26,10 @@ export async function keysCreate(args: string[]): Promise<void> {
   if (!callerId) { printError("--caller is required"); process.exit(1); }
 
   const bcryptRounds = roundsStr ? parseInt(roundsStr, 10) : 12;
+  if (roundsStr && (isNaN(bcryptRounds) || bcryptRounds < 1)) {
+    printError("--rounds must be a positive integer");
+    process.exit(1);
+  }
   const { keyId, rawKey } = await createApiKey(db, { name, callerId, bcryptRounds });
 
   console.log("Created API key");
