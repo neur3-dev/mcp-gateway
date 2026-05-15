@@ -93,13 +93,40 @@ export function buildMCPServer(config: GatewayConfig, caller: CallerContext, db:
     // Check RBAC — deny by default
     const rbacResult = await checkRbac(db, caller.callerId, req.params.name);
     if (rbacResult === "deny") {
+      await writeAuditEvent(db, {
+        callerId: caller.callerId,
+        keyId: caller.keyId,
+        tool: req.params.name,
+        server: req.params.name.includes("/") ? req.params.name.split("/")[0] : "unknown",
+        method: "tools/call",
+        status: "denied",
+        errorMessage: `RBAC denied for caller "${caller.callerId}"`,
+      });
       throw new Error(`Permission denied: caller "${caller.callerId}" cannot call "${req.params.name}"`);
     }
 
     if (!getKeyRateLimiter(config).check(caller.callerId)) {
+      await writeAuditEvent(db, {
+        callerId: caller.callerId,
+        keyId: caller.keyId,
+        tool: req.params.name,
+        server: req.params.name.includes("/") ? req.params.name.split("/")[0] : "unknown",
+        method: "tools/call",
+        status: "rate_limited",
+        errorMessage: `Rate limit exceeded for caller "${caller.callerId}"`,
+      });
       throw new Error(`Rate limit exceeded for caller "${caller.callerId}"`);
     }
     if (!getServerRateLimiter(config).check(serverName)) {
+      await writeAuditEvent(db, {
+        callerId: caller.callerId,
+        keyId: caller.keyId,
+        tool: req.params.name,
+        server: serverName,
+        method: "tools/call",
+        status: "rate_limited",
+        errorMessage: `Rate limit exceeded for server "${serverName}"`,
+      });
       throw new Error(`Rate limit exceeded for server "${serverName}"`);
     }
 
@@ -128,7 +155,8 @@ export function buildMCPServer(config: GatewayConfig, caller: CallerContext, db:
       return result;
     } catch (err) {
       getCircuitBreaker(config).recordFailure(serverName);
-      await writeAuditEvent(db, {
+      // Don't let audit write failure mask the original error
+      writeAuditEvent(db, {
         callerId: caller.callerId,
         keyId: caller.keyId,
         tool: req.params.name,
@@ -137,7 +165,7 @@ export function buildMCPServer(config: GatewayConfig, caller: CallerContext, db:
         latencyMs: Date.now() - start,
         status: "error",
         errorMessage: err instanceof Error ? err.message : String(err),
-      });
+      }).catch(() => {}); // fire-and-forget on error path
       throw err;
     }
   });
