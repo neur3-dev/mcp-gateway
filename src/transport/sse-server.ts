@@ -23,6 +23,12 @@ export function mountSSERoutes(
     sessions.set(transport.sessionId, transport);
 
     await server.connect(transport);
+
+    // Cleanup session when connection closes
+    server.on("close", () => {
+      sessions.delete(transport.sessionId);
+    });
+
     return transport.response;
   });
 
