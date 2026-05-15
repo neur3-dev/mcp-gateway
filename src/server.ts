@@ -16,7 +16,7 @@ const app = new Elysia()
 
 mountSSERoutes(
   app,
-  (caller) => buildMCPServer(config, caller),
+  (caller) => buildMCPServer(config, caller, db),
   (rawKey) => verifyApiKey(db, rawKey)
 );
 

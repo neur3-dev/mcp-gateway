@@ -10,6 +10,8 @@ import { connectSSE } from "../transport/sse-client";
 import { aggregateTools, aggregateResources } from "./aggregator";
 import { parseQualifiedTool, parseQualifiedResource } from "./namespace";
 import type { GatewayConfig, CallerContext } from "../types";
+import { checkRbac } from "../auth/rbac";
+import { getDb } from "../db/client";
 
 async function initDownstream(config: GatewayConfig): Promise<DownstreamClient[]> {
   return Promise.all(
@@ -24,7 +26,7 @@ async function getPool(config: GatewayConfig): Promise<DownstreamClient[]> {
   return _pool;
 }
 
-export function buildMCPServer(config: GatewayConfig, caller: CallerContext): Server {
+export function buildMCPServer(config: GatewayConfig, caller: CallerContext, db: ReturnType<typeof getDb>): Server {
   const server = new Server(
     { name: "mcp-gateway", version: "1.0.0" },
     { capabilities: { tools: {}, resources: {} } }
@@ -62,6 +64,13 @@ export function buildMCPServer(config: GatewayConfig, caller: CallerContext): Se
 
   server.setRequestHandler(CallToolRequestSchema, async (req) => {
     const { server: serverName, tool } = parseQualifiedTool(req.params.name);
+
+    // Check RBAC — deny by default
+    const rbacResult = await checkRbac(db, caller.callerId, req.params.name);
+    if (rbacResult === "deny") {
+      throw new Error(`Permission denied: caller "${caller.callerId}" cannot call "${req.params.name}"`);
+    }
+
     const pool = await getPool(config);
     const ds = pool.find((d) => d.name === serverName);
     if (!ds) throw new Error(`Unknown server: "${serverName}"`);
