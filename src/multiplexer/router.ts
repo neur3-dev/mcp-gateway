@@ -14,6 +14,7 @@ import { checkRbac } from "../auth/rbac";
 import { getDb } from "../db/client";
 import { RateLimiter } from "../middleware/rate-limiter";
 import { CircuitBreaker } from "../middleware/circuit-breaker";
+import { writeAuditEvent } from "../middleware/audit-logger";
 
 async function initDownstream(config: GatewayConfig): Promise<DownstreamClient[]> {
   return Promise.all(
@@ -110,12 +111,33 @@ export function buildMCPServer(config: GatewayConfig, caller: CallerContext, db:
     const ds = pool.find((d) => d.name === serverName);
     if (!ds) throw new Error(`Unknown server: "${serverName}"`);
 
+    const start = Date.now();
     try {
       const result = await ds.client.callTool({ name: tool, arguments: req.params.arguments });
       getCircuitBreaker(config).recordSuccess(serverName);
+      await writeAuditEvent(db, {
+        callerId: caller.callerId,
+        keyId: caller.keyId,
+        tool: req.params.name,
+        server: serverName,
+        method: "tools/call",
+        args: req.params.arguments,
+        latencyMs: Date.now() - start,
+        status: "ok",
+      });
       return result;
     } catch (err) {
       getCircuitBreaker(config).recordFailure(serverName);
+      await writeAuditEvent(db, {
+        callerId: caller.callerId,
+        keyId: caller.keyId,
+        tool: req.params.name,
+        server: serverName,
+        method: "tools/call",
+        latencyMs: Date.now() - start,
+        status: "error",
+        errorMessage: err instanceof Error ? err.message : String(err),
+      });
       throw err;
     }
   });
