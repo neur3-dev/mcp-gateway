@@ -1,5 +1,5 @@
 import { hash, compare } from "bcryptjs";
-import { eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { apiKeys } from "../db/schema";
 import type { CallerContext } from "../types";
@@ -52,4 +52,8 @@ export async function verifyApiKey(
 
 export async function revokeApiKey(db: Db, keyId: string): Promise<void> {
   await db.update(apiKeys).set({ revoked: true }).where(eq(apiKeys.id, keyId));
+}
+
+export async function listKeys(db: Db) {
+  return db.select().from(apiKeys).orderBy(desc(apiKeys.created_at));
 }
