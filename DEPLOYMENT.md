@@ -117,10 +117,14 @@ server {
 
 ## Admin CLI
 
-Manage API keys, RBAC policies, and audit logs via the CLI:
+The Docker image ships both the `gateway` server binary and a `mgw` admin CLI binary. Access control uses RBAC policies, not per-key scopes — a key identifies a caller; policies grant that caller access to specific tool patterns.
+
+### From source
 
 ```bash
-# Create an API key (access control is set via RBAC policies, not key-level scopes)
+export DATABASE_URL=postgres://gateway:gateway@localhost:5432/gateway
+
+# Create an API key
 bun run mgw keys create --caller "ci-agent" --name "prod key"
 
 # List all active keys
@@ -139,7 +143,27 @@ bun run mgw policy list --caller "ci-agent"
 bun run mgw audit list --caller "ci-agent" --limit 50
 ```
 
-> **Note:** Access control uses RBAC policies, not per-key scopes. A key identifies a caller; policies grant that caller access to specific tool patterns.
+### From inside a running Docker container
+
+The `mgw` binary is compiled into the gateway image and inherits the container's environment (`DATABASE_URL` is already set):
+
+```bash
+# Exec into the running gateway container
+docker compose exec gateway /app/mgw keys list
+docker compose exec gateway /app/mgw keys create --caller "ci-agent" --name "prod key"
+docker compose exec gateway /app/mgw policy add --caller "ci-agent" --pattern "sqlite/*" --effect allow
+```
+
+### One-off CLI container (no running gateway required)
+
+```bash
+docker run --rm \
+  --entrypoint /app/mgw \
+  -e DATABASE_URL="postgres://gateway:gateway@db:5432/gateway" \
+  --network <your-docker-network> \
+  mcp-gateway:latest \
+  keys list
+```
 
 ## Health Endpoints
 
