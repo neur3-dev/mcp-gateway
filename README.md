@@ -76,10 +76,30 @@ Secrets should be supplied through environment variables or encrypted `enc:` val
 - `docker/` - container build and local compose setup
 - `config.example.yaml` - starter configuration
 
+## Admin CLI
+
+The gateway ships a CLI for managing keys, policies, and audit logs.
+
+```bash
+# API keys
+bun run mgw keys create --caller agent-1 --name "prod key"
+bun run mgw keys list
+bun run mgw keys revoke <keyId>
+
+# RBAC policies
+bun run mgw policy add --caller agent-1 --pattern "sqlite/*" --effect allow
+bun run mgw policy list [--caller agent-1]
+bun run mgw policy remove <policyId>
+
+# Audit log
+bun run mgw audit list [--caller agent-1] [--limit 50]
+```
+
+All commands require `DATABASE_URL` to be set.
+
 ## Known Gaps
 
-- There is no stable admin CLI for API-key or RBAC management yet (planned).
-- This alpha does not yet ship a full operator guide or release process.
+- This alpha does not yet ship a full operator runbook or release process.
 
 ## Development
 

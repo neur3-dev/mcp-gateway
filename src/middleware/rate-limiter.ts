@@ -42,12 +42,14 @@ export class RateLimiter {
   private rps: number;
   private burst: number;
   private redis: Redis | null;
+  private failClosed: boolean;
   private ttlMs: number;
 
-  constructor(opts: { rps: number; burst: number; redis?: Redis | null }) {
+  constructor(opts: { rps: number; burst: number; redis?: Redis | null; failClosed?: boolean }) {
     this.rps = opts.rps;
     this.burst = opts.burst;
     this.redis = opts.redis ?? null;
+    this.failClosed = opts.failClosed ?? false;
     this.ttlMs = Math.ceil((opts.burst / opts.rps) * 1000) + 2000;
   }
 
@@ -56,8 +58,9 @@ export class RateLimiter {
     return this.checkInMemory(key);
   }
 
-  // Async check — uses Redis when configured, falls back to in-memory on error.
-  // Router uses this so rate limits are enforced before the request proceeds.
+  // Async check — uses Redis when configured.
+  // fail_closed=true: deny on Redis error (safe for production).
+  // fail_closed=false (default): fall back to in-memory on Redis error.
   async checkAsync(key: string): Promise<boolean> {
     if (!this.redis) return this.checkInMemory(key);
     try {
@@ -71,7 +74,12 @@ export class RateLimiter {
         this.ttlMs.toString()
       ) as number;
       return result === 1;
-    } catch {
+    } catch (err) {
+      if (this.failClosed) {
+        console.error("[rate-limiter] Redis error with fail_closed=true — denying request:", (err as Error).message);
+        return false;
+      }
+      console.warn("[rate-limiter] Redis error, falling back to in-memory:", (err as Error).message);
       return this.checkInMemory(key);
     }
   }

@@ -37,6 +37,9 @@ audit:
   postgres_url: "${DATABASE_URL}"
 
 # Optional — enables Redis-backed rate limiting and circuit breaker state.
-# Falls back to in-memory if omitted or if Redis is unreachable.
+# Falls back to in-memory if omitted or if Redis is unreachable (when fail_closed is false).
 redis:
   url: "${REDIS_URL}"
+  # fail_closed: true — deny requests when Redis is unreachable instead of silently falling back
+  # to in-memory rate limiting. Recommended for production. Default: false (safe for dev/self-hosted).
+  fail_closed: false

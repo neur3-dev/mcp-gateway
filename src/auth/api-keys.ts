@@ -8,7 +8,7 @@ import type { getDb } from "../db/client";
 type Db = ReturnType<typeof getDb>;
 
 const PREFIX = "mgk_";
-const PREFIX_LEN = 8; // chars stored after the "mgk_" scheme prefix
+const PREFIX_LEN = 16; // chars stored after the "mgk_" scheme prefix
 
 function extractPrefix(rawKey: string): string {
   return rawKey.slice(PREFIX.length, PREFIX.length + PREFIX_LEN);

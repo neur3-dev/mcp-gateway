@@ -46,5 +46,7 @@ export interface GatewayConfig {
   servers: ServerConfig[];
   circuit_breaker: { failure_threshold: number; reset_timeout_ms: number };
   audit: { enabled: boolean; redact_args: boolean; postgres_url: string };
-  redis?: { url: string };
+  // fail_closed: deny requests when Redis is unreachable instead of falling back to in-memory.
+  // Set true in production to prevent silent rate-limit bypass on Redis outage.
+  redis?: { url: string; fail_closed?: boolean };
 }

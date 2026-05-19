@@ -22,6 +22,7 @@ services:
   db:
     image: postgres:16-alpine
     environment:
+      # ⚠️  LOCAL DEVELOPMENT ONLY — replace all credentials before any public deployment.
       POSTGRES_USER: gateway
       POSTGRES_PASSWORD: gateway
       POSTGRES_DB: gateway

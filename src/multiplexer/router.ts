@@ -34,19 +34,33 @@ let _keyRateLimiter: RateLimiter | null = null;
 let _serverRateLimiter: RateLimiter | null = null;
 
 function getKeyRateLimiter(config: GatewayConfig, redis: Redis | null): RateLimiter {
-  if (!_keyRateLimiter) _keyRateLimiter = new RateLimiter({ rps: config.rate_limit.default_rps, burst: config.rate_limit.burst, redis });
+  if (!_keyRateLimiter) _keyRateLimiter = new RateLimiter({
+    rps: config.rate_limit.default_rps,
+    burst: config.rate_limit.burst,
+    redis,
+    failClosed: config.redis?.fail_closed ?? false,
+  });
   return _keyRateLimiter;
 }
 
 function getServerRateLimiter(config: GatewayConfig, redis: Redis | null): RateLimiter {
-  if (!_serverRateLimiter) _serverRateLimiter = new RateLimiter({ rps: config.rate_limit.per_server_rps, burst: config.rate_limit.per_server_rps * 2, redis });
+  if (!_serverRateLimiter) _serverRateLimiter = new RateLimiter({
+    rps: config.rate_limit.per_server_rps,
+    burst: config.rate_limit.per_server_rps * 2,
+    redis,
+    failClosed: config.redis?.fail_closed ?? false,
+  });
   return _serverRateLimiter;
 }
 
 let _circuitBreaker: CircuitBreaker | null = null;
 
 function getCircuitBreaker(config: GatewayConfig, redis: Redis | null): CircuitBreaker {
-  if (!_circuitBreaker) _circuitBreaker = new CircuitBreaker({ failureThreshold: config.circuit_breaker.failure_threshold, resetTimeoutMs: config.circuit_breaker.reset_timeout_ms, redis });
+  if (!_circuitBreaker) _circuitBreaker = new CircuitBreaker({
+    failureThreshold: config.circuit_breaker.failure_threshold,
+    resetTimeoutMs: config.circuit_breaker.reset_timeout_ms,
+    redis,
+  });
   return _circuitBreaker;
 }
 
@@ -79,10 +93,18 @@ export function buildMCPServer(
       .filter((r): r is PromiseFulfilledResult<{ server: string; tools: any[] }> => r.status === "fulfilled")
       .map((r) => r.value);
 
-    // Filter to tools the caller is actually allowed to call
     const policies = await getCallerPolicies(db, caller.callerId);
     const allTools = aggregateTools(available);
     const allowedTools = allTools.filter((t) => checkRbacWithPolicies(policies, t.name) === "allow");
+
+    await writeAuditEvent(db, {
+      callerId: caller.callerId,
+      keyId: caller.keyId,
+      tool: "tools/list",
+      server: "gateway",
+      method: "tools/list",
+      status: "ok",
+    }, auditCfg);
 
     return { tools: allowedTools };
   });
@@ -103,13 +125,21 @@ export function buildMCPServer(
       .filter((r): r is PromiseFulfilledResult<{ server: string; resources: any[] }> => r.status === "fulfilled")
       .map((r) => r.value);
 
-    // Filter to resources the caller can access (uses serverName/resources as the RBAC key)
     const policies = await getCallerPolicies(db, caller.callerId);
     const allResources = aggregateResources(available);
     const allowedResources = allResources.filter((r) => {
       const serverName = r.uri.split("::")[0];
       return checkRbacWithPolicies(policies, `${serverName}/resources`) === "allow";
     });
+
+    await writeAuditEvent(db, {
+      callerId: caller.callerId,
+      keyId: caller.keyId,
+      tool: "resources/list",
+      server: "gateway",
+      method: "resources/list",
+      status: "ok",
+    }, auditCfg);
 
     return { resources: allowedResources };
   });
@@ -161,6 +191,15 @@ export function buildMCPServer(
     }
 
     if (await getCircuitBreaker(config, redis).isOpen(serverName)) {
+      await writeAuditEvent(db, {
+        callerId: caller.callerId,
+        keyId: caller.keyId,
+        tool: req.params.name,
+        server: serverName,
+        method: "tools/call",
+        status: "circuit_open",
+        errorMessage: `Circuit open for server "${serverName}"`,
+      }, auditCfg);
       throw new Error(`Server "${serverName}" is currently unavailable (circuit open)`);
     }
 
@@ -201,9 +240,8 @@ export function buildMCPServer(
 
   server.setRequestHandler(ReadResourceRequestSchema, async (req) => {
     const { server: serverName, uri } = parseQualifiedResource(req.params.uri);
-
-    // Resources use serverName/resources as the RBAC key — consistent with serverName/* patterns
     const rbacKey = `${serverName}/resources`;
+
     const rbacResult = await checkRbacWithPolicies(
       await getCallerPolicies(db, caller.callerId),
       rbacKey
@@ -234,7 +272,29 @@ export function buildMCPServer(
       throw new Error(`Rate limit exceeded for caller "${caller.callerId}"`);
     }
 
+    if (!await getServerRateLimiter(config, redis).checkAsync(serverName)) {
+      await writeAuditEvent(db, {
+        callerId: caller.callerId,
+        keyId: caller.keyId,
+        tool: req.params.uri,
+        server: serverName,
+        method: "resources/read",
+        status: "rate_limited",
+        errorMessage: `Rate limit exceeded for server "${serverName}"`,
+      }, auditCfg);
+      throw new Error(`Rate limit exceeded for server "${serverName}"`);
+    }
+
     if (await getCircuitBreaker(config, redis).isOpen(serverName)) {
+      await writeAuditEvent(db, {
+        callerId: caller.callerId,
+        keyId: caller.keyId,
+        tool: req.params.uri,
+        server: serverName,
+        method: "resources/read",
+        status: "circuit_open",
+        errorMessage: `Circuit open for server "${serverName}"`,
+      }, auditCfg);
       throw new Error(`Server "${serverName}" is currently unavailable (circuit open)`);
     }
 
