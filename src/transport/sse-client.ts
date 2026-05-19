@@ -31,7 +31,7 @@ async function buildClient(server: SSEServerConfig, token?: string): Promise<{ c
   const headers: Record<string, string> = { ...(server.headers ?? {}) };
   if (token) headers["Authorization"] = `Bearer ${token}`;
   const transport = new SSEClientTransport(new URL(server.url), { requestInit: { headers } });
-  const client = new Client({ name: "mcp-gateway", version: "1.0.0" });
+  const client = new Client({ name: "mcp-gateway", version: "0.1.0-beta" });
   await client.connect(transport);
   return { client, close: () => client.close() };
 }

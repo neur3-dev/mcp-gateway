@@ -18,7 +18,7 @@ export async function connectStdio(server: StdioServerConfig): Promise<Downstrea
     env: { PATH: process.env.PATH ?? "", ...(server.env ?? {}) } as Record<string, string>,
   });
 
-  const client = new Client({ name: "mcp-gateway", version: "1.0.0" });
+  const client = new Client({ name: "mcp-gateway", version: "0.1.0-beta" });
   await client.connect(transport);
 
   return {
