@@ -12,7 +12,9 @@ export async function connectStdio(server: StdioServerConfig): Promise<Downstrea
   const transport = new StdioClientTransport({
     command: server.command,
     args: server.args ?? [],
-    env: { ...process.env, ...(server.env ?? {}) } as Record<string, string>,
+    // Pass only explicitly configured vars + PATH. Never expose DATABASE_URL, REDIS_URL,
+    // gateway secrets or unrelated host env to downstream stdio processes.
+    env: { PATH: process.env.PATH ?? "", ...(server.env ?? {}) } as Record<string, string>,
   });
 
   const client = new Client({ name: "mcp-gateway", version: "1.0.0" });

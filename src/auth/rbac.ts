@@ -32,16 +32,21 @@ export async function checkRbac(
   callerId: string,
   tool: string
 ): Promise<"allow" | "deny"> {
-  const policies = await db
-    .select()
-    .from(rbacPolicies)
-    .where(eq(rbacPolicies.caller_id, callerId));
+  const policies = await getCallerPolicies(db, callerId);
+  return checkRbacWithPolicies(policies, tool);
+}
 
+export async function getCallerPolicies(db: Db, callerId: string) {
+  return db.select().from(rbacPolicies).where(eq(rbacPolicies.caller_id, callerId));
+}
+
+export function checkRbacWithPolicies(
+  policies: { tool_pattern: string; effect: string }[],
+  tool: string
+): "allow" | "deny" {
   const matching = policies.filter((p) => matchesPattern(p.tool_pattern, tool));
-
   if (matching.some((p) => p.effect === "deny")) return "deny";
   if (matching.some((p) => p.effect === "allow")) return "allow";
-
   return "deny";
 }
 

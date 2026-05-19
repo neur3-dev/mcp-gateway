@@ -5,6 +5,11 @@ import type { getDb } from "../db/client";
 
 type Db = ReturnType<typeof getDb>;
 
+export interface AuditConfig {
+  enabled: boolean;
+  redact_args: boolean;
+}
+
 export interface AuditEvent {
   callerId: string;
   keyId: string;
@@ -21,7 +26,22 @@ function hashArgs(args: unknown): string {
   return createHash("sha256").update(JSON.stringify(args ?? {})).digest("hex");
 }
 
-export async function writeAuditEvent(db: Db, event: AuditEvent): Promise<void> {
+const MAX_RAW_ARGS_LEN = 4096;
+
+function serializeArgs(args: unknown, redact: boolean): string | null {
+  if (args === undefined) return null;
+  if (redact) return hashArgs(args);
+  const raw = JSON.stringify(args);
+  return raw.length > MAX_RAW_ARGS_LEN ? raw.slice(0, MAX_RAW_ARGS_LEN) + "…" : raw;
+}
+
+export async function writeAuditEvent(
+  db: Db,
+  event: AuditEvent,
+  auditConfig: AuditConfig = { enabled: true, redact_args: true }
+): Promise<void> {
+  if (!auditConfig.enabled) return;
+
   await db.insert(auditLog).values({
     id: nanoid(16),
     caller_id: event.callerId,
@@ -29,7 +49,7 @@ export async function writeAuditEvent(db: Db, event: AuditEvent): Promise<void> 
     tool: event.tool,
     server: event.server,
     method: event.method,
-    args_hash: event.args !== undefined ? hashArgs(event.args) : null,
+    args_hash: serializeArgs(event.args, auditConfig.redact_args),
     latency_ms: event.latencyMs ?? null,
     status: event.status,
     error_message: event.errorMessage ?? null,

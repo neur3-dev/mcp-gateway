@@ -25,7 +25,8 @@ if (process.env.NODE_ENV !== "production") {
 mountSSERoutes(
   app as Parameters<typeof mountSSERoutes>[0],
   (caller) => buildMCPServer(config, caller, db, redis),
-  (rawKey) => verifyApiKey(db, rawKey)
+  (rawKey) => verifyApiKey(db, rawKey),
+  config.auth.api_key_header
 );
 
 app.onError(({ error, set }) => {

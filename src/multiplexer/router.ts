@@ -10,12 +10,12 @@ import { connectSSE } from "../transport/sse-client";
 import { aggregateTools, aggregateResources } from "./aggregator";
 import { parseQualifiedTool, parseQualifiedResource } from "./namespace";
 import type { GatewayConfig, CallerContext } from "../types";
-import { checkRbac } from "../auth/rbac";
+import { getCallerPolicies, checkRbacWithPolicies } from "../auth/rbac";
 import { getDb } from "../db/client";
 import type { Redis } from "../redis/client";
 import { RateLimiter } from "../middleware/rate-limiter";
 import { CircuitBreaker } from "../middleware/circuit-breaker";
-import { writeAuditEvent } from "../middleware/audit-logger";
+import { writeAuditEvent, type AuditConfig } from "../middleware/audit-logger";
 
 async function initDownstream(config: GatewayConfig): Promise<DownstreamClient[]> {
   return Promise.all(
@@ -61,11 +61,14 @@ export function buildMCPServer(
     { capabilities: { tools: {}, resources: {} } }
   );
 
+  const auditCfg: AuditConfig = config.audit;
+
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     const pool = await getPool(config);
     const cb = getCircuitBreaker(config, redis);
     const open = await Promise.all(pool.map((ds) => cb.isOpen(ds.name)));
     const healthyPool = pool.filter((_, i) => !open[i]);
+
     const serverTools = await Promise.allSettled(
       healthyPool.map(async (ds) => {
         const result = await ds.client.listTools();
@@ -76,7 +79,12 @@ export function buildMCPServer(
       .filter((r): r is PromiseFulfilledResult<{ server: string; tools: any[] }> => r.status === "fulfilled")
       .map((r) => r.value);
 
-    return { tools: aggregateTools(available) };
+    // Filter to tools the caller is actually allowed to call
+    const policies = await getCallerPolicies(db, caller.callerId);
+    const allTools = aggregateTools(available);
+    const allowedTools = allTools.filter((t) => checkRbacWithPolicies(policies, t.name) === "allow");
+
+    return { tools: allowedTools };
   });
 
   server.setRequestHandler(ListResourcesRequestSchema, async () => {
@@ -84,6 +92,7 @@ export function buildMCPServer(
     const cb = getCircuitBreaker(config, redis);
     const open = await Promise.all(pool.map((ds) => cb.isOpen(ds.name)));
     const healthyPool = pool.filter((_, i) => !open[i]);
+
     const serverResources = await Promise.allSettled(
       healthyPool.map(async (ds) => {
         const result = await ds.client.listResources();
@@ -94,24 +103,34 @@ export function buildMCPServer(
       .filter((r): r is PromiseFulfilledResult<{ server: string; resources: any[] }> => r.status === "fulfilled")
       .map((r) => r.value);
 
-    return { resources: aggregateResources(available) };
+    // Filter to resources the caller can access (uses serverName/resources as the RBAC key)
+    const policies = await getCallerPolicies(db, caller.callerId);
+    const allResources = aggregateResources(available);
+    const allowedResources = allResources.filter((r) => {
+      const serverName = r.uri.split("::")[0];
+      return checkRbacWithPolicies(policies, `${serverName}/resources`) === "allow";
+    });
+
+    return { resources: allowedResources };
   });
 
   server.setRequestHandler(CallToolRequestSchema, async (req) => {
     const { server: serverName, tool } = parseQualifiedTool(req.params.name);
 
-    // Check RBAC — deny by default
-    const rbacResult = await checkRbac(db, caller.callerId, req.params.name);
+    const rbacResult = await checkRbacWithPolicies(
+      await getCallerPolicies(db, caller.callerId),
+      req.params.name
+    );
     if (rbacResult === "deny") {
       await writeAuditEvent(db, {
         callerId: caller.callerId,
         keyId: caller.keyId,
         tool: req.params.name,
-        server: req.params.name.includes("/") ? req.params.name.split("/")[0] : "unknown",
+        server: serverName,
         method: "tools/call",
         status: "denied",
         errorMessage: `RBAC denied for caller "${caller.callerId}"`,
-      });
+      }, auditCfg);
       throw new Error(`Permission denied: caller "${caller.callerId}" cannot call "${req.params.name}"`);
     }
 
@@ -120,11 +139,11 @@ export function buildMCPServer(
         callerId: caller.callerId,
         keyId: caller.keyId,
         tool: req.params.name,
-        server: req.params.name.includes("/") ? req.params.name.split("/")[0] : "unknown",
+        server: serverName,
         method: "tools/call",
         status: "rate_limited",
         errorMessage: `Rate limit exceeded for caller "${caller.callerId}"`,
-      });
+      }, auditCfg);
       throw new Error(`Rate limit exceeded for caller "${caller.callerId}"`);
     }
 
@@ -137,7 +156,7 @@ export function buildMCPServer(
         method: "tools/call",
         status: "rate_limited",
         errorMessage: `Rate limit exceeded for server "${serverName}"`,
-      });
+      }, auditCfg);
       throw new Error(`Rate limit exceeded for server "${serverName}"`);
     }
 
@@ -162,7 +181,7 @@ export function buildMCPServer(
         args: req.params.arguments,
         latencyMs: Date.now() - start,
         status: "ok",
-      });
+      }, auditCfg);
       return result;
     } catch (err) {
       await getCircuitBreaker(config, redis).recordFailure(serverName);
@@ -175,18 +194,80 @@ export function buildMCPServer(
         latencyMs: Date.now() - start,
         status: "error",
         errorMessage: err instanceof Error ? err.message : String(err),
-      }).catch(() => {});
+      }, auditCfg).catch(() => {});
       throw err;
     }
   });
 
   server.setRequestHandler(ReadResourceRequestSchema, async (req) => {
     const { server: serverName, uri } = parseQualifiedResource(req.params.uri);
+
+    // Resources use serverName/resources as the RBAC key — consistent with serverName/* patterns
+    const rbacKey = `${serverName}/resources`;
+    const rbacResult = await checkRbacWithPolicies(
+      await getCallerPolicies(db, caller.callerId),
+      rbacKey
+    );
+    if (rbacResult === "deny") {
+      await writeAuditEvent(db, {
+        callerId: caller.callerId,
+        keyId: caller.keyId,
+        tool: req.params.uri,
+        server: serverName,
+        method: "resources/read",
+        status: "denied",
+        errorMessage: `RBAC denied for caller "${caller.callerId}"`,
+      }, auditCfg);
+      throw new Error(`Permission denied: caller "${caller.callerId}" cannot read resources from "${serverName}"`);
+    }
+
+    if (!await getKeyRateLimiter(config, redis).checkAsync(caller.callerId)) {
+      await writeAuditEvent(db, {
+        callerId: caller.callerId,
+        keyId: caller.keyId,
+        tool: req.params.uri,
+        server: serverName,
+        method: "resources/read",
+        status: "rate_limited",
+        errorMessage: `Rate limit exceeded for caller "${caller.callerId}"`,
+      }, auditCfg);
+      throw new Error(`Rate limit exceeded for caller "${caller.callerId}"`);
+    }
+
+    if (await getCircuitBreaker(config, redis).isOpen(serverName)) {
+      throw new Error(`Server "${serverName}" is currently unavailable (circuit open)`);
+    }
+
     const pool = await getPool(config);
     const ds = pool.find((d) => d.name === serverName);
     if (!ds) throw new Error(`Unknown server: "${serverName}"`);
 
-    return ds.client.readResource({ uri });
+    const start = Date.now();
+    try {
+      const result = await ds.client.readResource({ uri });
+      await writeAuditEvent(db, {
+        callerId: caller.callerId,
+        keyId: caller.keyId,
+        tool: req.params.uri,
+        server: serverName,
+        method: "resources/read",
+        latencyMs: Date.now() - start,
+        status: "ok",
+      }, auditCfg);
+      return result;
+    } catch (err) {
+      writeAuditEvent(db, {
+        callerId: caller.callerId,
+        keyId: caller.keyId,
+        tool: req.params.uri,
+        server: serverName,
+        method: "resources/read",
+        latencyMs: Date.now() - start,
+        status: "error",
+        errorMessage: err instanceof Error ? err.message : String(err),
+      }, auditCfg).catch(() => {});
+      throw err;
+    }
   });
 
   return server;

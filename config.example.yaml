@@ -3,10 +3,7 @@ gateway:
   port: 3000
   host: "0.0.0.0"
   transport: "sse"
-  tls:
-    enabled: false
-    cert: "/certs/server.crt"
-    key: "/certs/server.key"
+  # TLS is not handled by the gateway. Terminate TLS at a reverse proxy (nginx, Caddy).
 
 auth:
   api_key_header: "X-API-Key"
