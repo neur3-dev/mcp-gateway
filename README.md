@@ -1,5 +1,7 @@
 # MCP Gateway
 
+[![CI](https://github.com/neur3-dev/mcp-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/neur3-dev/mcp-gateway/actions/workflows/ci.yml)
+
 A beta MCP multiplexing gateway for exposing multiple downstream MCP servers through one authenticated endpoint.
 
 It currently supports:
