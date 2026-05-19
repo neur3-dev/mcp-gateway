@@ -10,11 +10,11 @@
 ## Quick Start (Docker Compose)
 
 ```bash
-cp docker/config.yaml.example docker/config.yaml   # edit as needed
+cp config.example.yaml docker/config.yaml   # edit as needed
 docker compose -f docker/docker-compose.yml up -d
 ```
 
-The gateway listens on port 3000 by default. All three migrations run automatically on first boot.
+The gateway listens on port 3000 by default. Migrations 0001–0003 run automatically on first boot.
 
 ## Environment Variables
 
@@ -64,7 +64,7 @@ readiness:
 
 ## Migrations
 
-Migrations are plain SQL files in `migrations/` and are idempotent. They run automatically via the Docker Compose `db` init directory. To run them manually:
+Migrations 0001–0003 are idempotent SQL files. They run automatically via the Docker Compose `db` init directory on first boot. To run them manually:
 
 ```bash
 psql "$DATABASE_URL" -f migrations/0001_initial.sql
@@ -72,9 +72,9 @@ psql "$DATABASE_URL" -f migrations/0002_key_prefix.sql
 psql "$DATABASE_URL" -f migrations/0003_args_record.sql
 ```
 
-### Optional: Drop Legacy API Key Prefix Fallback
+### Optional Hardening: Migration 0004
 
-After all API keys have been rotated (every active key has a non-null `key_prefix`), apply migration `0004` to enforce the column as NOT NULL and remove the O(n) scan fallback:
+`migrations/0004_key_prefix_required.sql` is **not** part of first-boot. It enforces `NOT NULL` on `key_prefix` after all API keys have been rotated. Apply only when ready:
 
 ```bash
 # Verify no null-prefix keys remain first
@@ -83,7 +83,7 @@ psql "$DATABASE_URL" -c "SELECT id, name FROM api_keys WHERE key_prefix IS NULL 
 psql "$DATABASE_URL" -f migrations/0004_key_prefix_required.sql
 ```
 
-Then remove the `isNull(apiKeys.key_prefix)` branch in `src/auth/api-keys.ts`.
+After applying, remove the `isNull(apiKeys.key_prefix)` branch in `src/auth/api-keys.ts`.
 
 ## nginx Reverse Proxy
 
@@ -120,8 +120,8 @@ server {
 Manage API keys, RBAC policies, and audit logs via the CLI:
 
 ```bash
-# Create an API key scoped to specific servers
-bun run mgw keys create --caller "ci-agent" --scopes "sqlite/*,github/list_repos"
+# Create an API key (access control is set via RBAC policies, not key-level scopes)
+bun run mgw keys create --caller "ci-agent" --name "prod key"
 
 # List all active keys
 bun run mgw keys list
@@ -129,19 +129,24 @@ bun run mgw keys list
 # Revoke a key by ID
 bun run mgw keys revoke <key-id>
 
-# Add an RBAC policy
-bun run mgw policy add --caller "ci-agent" --pattern "sqlite/*"
+# Grant access to a tool pattern for a caller
+bun run mgw policy add --caller "ci-agent" --pattern "sqlite/*" --effect allow
+
+# View RBAC policies
+bun run mgw policy list --caller "ci-agent"
 
 # View recent audit entries
 bun run mgw audit list --caller "ci-agent" --limit 50
 ```
+
+> **Note:** Access control uses RBAC policies, not per-key scopes. A key identifies a caller; policies grant that caller access to specific tool patterns.
 
 ## Health Endpoints
 
 | Endpoint | Purpose |
 |---|---|
 | `GET /health` | Liveness probe — returns `{ status: "ok" }` immediately |
-| `GET /ready` | Readiness probe — checks DB, Redis, and circuit breaker state for each downstream server |
+| `GET /ready` | Readiness probe — checks DB, Redis (if configured), and each downstream MCP server via `listTools()` with a 3-second timeout |
 
 The `/ready` response looks like:
 
@@ -150,12 +155,14 @@ The `/ready` response looks like:
   "db": "ok",
   "redis": "ok",
   "server:sqlite": "ok",
-  "server:github": "circuit_open",
+  "server:github": "unreachable: probe timeout",
   "status": "ready"
 }
 ```
 
-Returns `503` if the database is unavailable.
+Possible values per `server:*` key: `"ok"`, `"circuit_open"`, `"unreachable: <reason>"`, or `"not_connected"`.
+
+By default only a DB failure causes `503`. Configure `readiness.require_redis` and `readiness.require_downstreams` to fail readiness on other checks (recommended for Kubernetes deployments).
 
 ## Production Checklist
 
@@ -168,5 +175,5 @@ Returns `503` if the database is unavailable.
 - [ ] TLS terminated at reverse proxy; gateway not exposed directly on port 443
 - [ ] PostgreSQL credentials rotated from Docker Compose defaults
 - [ ] Firewall rule: port 3000 accessible only from the reverse proxy, not the public internet
-- [ ] API keys created with minimum required scopes (principle of least privilege)
+- [ ] RBAC policies created with minimum required tool patterns (principle of least privilege)
 - [ ] Audit log retention policy configured at the database level
