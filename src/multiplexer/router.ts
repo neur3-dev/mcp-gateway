@@ -305,6 +305,7 @@ export function buildMCPServer(
     const start = Date.now();
     try {
       const result = await ds.client.readResource({ uri });
+      await getCircuitBreaker(config, redis).recordSuccess(serverName);
       await writeAuditEvent(db, {
         callerId: caller.callerId,
         keyId: caller.keyId,
@@ -316,6 +317,7 @@ export function buildMCPServer(
       }, auditCfg);
       return result;
     } catch (err) {
+      await getCircuitBreaker(config, redis).recordFailure(serverName);
       writeAuditEvent(db, {
         callerId: caller.callerId,
         keyId: caller.keyId,
@@ -336,4 +338,11 @@ export function buildMCPServer(
 export function sweepRateLimiters(): void {
   _keyRateLimiter?.sweep();
   _serverRateLimiter?.sweep();
+}
+
+export async function closePool(): Promise<void> {
+  if (_pool) {
+    await Promise.allSettled(_pool.map((ds) => ds.close()));
+    _pool = null;
+  }
 }

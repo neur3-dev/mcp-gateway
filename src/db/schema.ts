@@ -4,7 +4,7 @@ export const apiKeys = pgTable("api_keys", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   key_hash: text("key_hash").notNull(),
-  key_prefix: text("key_prefix"),   // first 8 chars after "mgk_" — enables O(1) lookup before bcrypt
+  key_prefix: text("key_prefix"),   // first 16 chars after "mgk_" — enables O(1) lookup before bcrypt
   caller_id: text("caller_id").notNull(),
   created_at: timestamp("created_at").defaultNow(),
   revoked: boolean("revoked").default(false),
@@ -26,7 +26,7 @@ export const auditLog = pgTable("audit_log", {
   tool: text("tool").notNull(),
   server: text("server").notNull(),
   method: text("method").notNull(),
-  args_hash: text("args_hash"),
+  args_record: text("args_record"),  // SHA-256 hash when redact_args=true, truncated raw JSON when false
   latency_ms: integer("latency_ms"),
   status: text("status").notNull(),
   error_message: text("error_message"),

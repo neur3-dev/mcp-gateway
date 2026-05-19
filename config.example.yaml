@@ -4,6 +4,9 @@ gateway:
   host: "0.0.0.0"
   transport: "sse"
   # TLS is not handled by the gateway. Terminate TLS at a reverse proxy (nginx, Caddy).
+  # cors_origins: restrict CORS to specific origins in production. Omit to allow all (dev default).
+  # cors_origins:
+  #   - "https://app.example.com"
 
 auth:
   api_key_header: "X-API-Key"
@@ -33,7 +36,7 @@ circuit_breaker:
 
 audit:
   enabled: true
-  redact_args: false
+  redact_args: true   # store SHA-256 hash of args; set false only for debug (stores truncated raw JSON)
   postgres_url: "${DATABASE_URL}"
 
 # Optional — enables Redis-backed rate limiting and circuit breaker state.

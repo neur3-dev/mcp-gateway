@@ -30,6 +30,7 @@ services:
       - pg_data:/var/lib/postgresql/data
       - ../migrations/0001_initial.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
       - ../migrations/0002_key_prefix.sql:/docker-entrypoint-initdb.d/02_key_prefix.sql:ro
+      - ../migrations/0003_args_record.sql:/docker-entrypoint-initdb.d/03_args_record.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U gateway"]
       interval: 5s

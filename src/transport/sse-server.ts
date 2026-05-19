@@ -15,11 +15,27 @@ interface Session {
 
 const sessions = new Map<string, Session>();
 
+async function closeSession(id: string): Promise<void> {
+  const session = sessions.get(id);
+  if (!session) return;
+  clearTimeout(session.timer);
+  sessions.delete(id);
+  try {
+    await session.server.close();
+  } catch {
+    // ignore close errors — transport may already be gone
+  }
+}
+
 function refreshTimer(id: string): void {
   const session = sessions.get(id);
   if (!session) return;
   clearTimeout(session.timer);
-  session.timer = setTimeout(() => sessions.delete(id), SESSION_TTL_MS);
+  session.timer = setTimeout(() => closeSession(id), SESSION_TTL_MS);
+}
+
+export async function closeAllSessions(): Promise<void> {
+  await Promise.allSettled([...sessions.keys()].map(closeSession));
 }
 
 export function mountSSERoutes(
@@ -52,7 +68,7 @@ export function mountSSERoutes(
     const transport = new WebStandardStreamableHTTPServerTransport({
       sessionIdGenerator: () => randomUUID(),
       onsessioninitialized: (id) => {
-        const timer = setTimeout(() => sessions.delete(id), SESSION_TTL_MS);
+        const timer = setTimeout(() => closeSession(id), SESSION_TTL_MS);
         sessions.set(id, { transport, server, callerId: caller.callerId, keyId: caller.keyId, timer });
       },
       onsessionclosed: (id) => {

@@ -40,6 +40,7 @@ export interface GatewayConfig {
     host: string;
     transport: "sse" | "stdio";
     // TLS is not implemented — terminate TLS at a reverse proxy (nginx/Caddy) in front of the gateway.
+    cors_origins?: string[];  // restrict CORS; omit or ["*"] to allow all (dev default)
   };
   auth: { api_key_header: string; bcrypt_rounds: number };
   rate_limit: { default_rps: number; burst: number; per_server_rps: number };

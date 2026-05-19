@@ -14,4 +14,11 @@ export function getRedis(url?: string): Redis | null {
   return _redis;
 }
 
+export async function endRedis(): Promise<void> {
+  if (_redis) {
+    await _redis.quit();
+    _redis = null;
+  }
+}
+
 export type { Redis };

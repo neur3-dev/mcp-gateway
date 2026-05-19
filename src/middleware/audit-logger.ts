@@ -49,7 +49,7 @@ export async function writeAuditEvent(
     tool: event.tool,
     server: event.server,
     method: event.method,
-    args_hash: serializeArgs(event.args, auditConfig.redact_args),
+    args_record: serializeArgs(event.args, auditConfig.redact_args),
     latency_ms: event.latencyMs ?? null,
     status: event.status,
     error_message: event.errorMessage ?? null,
