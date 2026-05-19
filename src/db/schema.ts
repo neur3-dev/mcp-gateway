@@ -4,6 +4,7 @@ export const apiKeys = pgTable("api_keys", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   key_hash: text("key_hash").notNull(),
+  key_prefix: text("key_prefix"),   // first 8 chars after "mgk_" — enables O(1) lookup before bcrypt
   caller_id: text("caller_id").notNull(),
   created_at: timestamp("created_at").defaultNow(),
   revoked: boolean("revoked").default(false),

@@ -12,6 +12,7 @@ import { parseQualifiedTool, parseQualifiedResource } from "./namespace";
 import type { GatewayConfig, CallerContext } from "../types";
 import { checkRbac } from "../auth/rbac";
 import { getDb } from "../db/client";
+import type { Redis } from "../redis/client";
 import { RateLimiter } from "../middleware/rate-limiter";
 import { CircuitBreaker } from "../middleware/circuit-breaker";
 import { writeAuditEvent } from "../middleware/audit-logger";
@@ -32,24 +33,29 @@ async function getPool(config: GatewayConfig): Promise<DownstreamClient[]> {
 let _keyRateLimiter: RateLimiter | null = null;
 let _serverRateLimiter: RateLimiter | null = null;
 
-function getKeyRateLimiter(config: GatewayConfig): RateLimiter {
-  if (!_keyRateLimiter) _keyRateLimiter = new RateLimiter({ rps: config.rate_limit.default_rps, burst: config.rate_limit.burst });
+function getKeyRateLimiter(config: GatewayConfig, redis: Redis | null): RateLimiter {
+  if (!_keyRateLimiter) _keyRateLimiter = new RateLimiter({ rps: config.rate_limit.default_rps, burst: config.rate_limit.burst, redis });
   return _keyRateLimiter;
 }
 
-function getServerRateLimiter(config: GatewayConfig): RateLimiter {
-  if (!_serverRateLimiter) _serverRateLimiter = new RateLimiter({ rps: config.rate_limit.per_server_rps, burst: config.rate_limit.per_server_rps * 2 });
+function getServerRateLimiter(config: GatewayConfig, redis: Redis | null): RateLimiter {
+  if (!_serverRateLimiter) _serverRateLimiter = new RateLimiter({ rps: config.rate_limit.per_server_rps, burst: config.rate_limit.per_server_rps * 2, redis });
   return _serverRateLimiter;
 }
 
 let _circuitBreaker: CircuitBreaker | null = null;
 
-function getCircuitBreaker(config: GatewayConfig): CircuitBreaker {
-  if (!_circuitBreaker) _circuitBreaker = new CircuitBreaker({ failureThreshold: config.circuit_breaker.failure_threshold, resetTimeoutMs: config.circuit_breaker.reset_timeout_ms });
+function getCircuitBreaker(config: GatewayConfig, redis: Redis | null): CircuitBreaker {
+  if (!_circuitBreaker) _circuitBreaker = new CircuitBreaker({ failureThreshold: config.circuit_breaker.failure_threshold, resetTimeoutMs: config.circuit_breaker.reset_timeout_ms, redis });
   return _circuitBreaker;
 }
 
-export function buildMCPServer(config: GatewayConfig, caller: CallerContext, db: ReturnType<typeof getDb>): Server {
+export function buildMCPServer(
+  config: GatewayConfig,
+  caller: CallerContext,
+  db: ReturnType<typeof getDb>,
+  redis: Redis | null = null
+): Server {
   const server = new Server(
     { name: "mcp-gateway", version: "1.0.0" },
     { capabilities: { tools: {}, resources: {} } }
@@ -57,7 +63,9 @@ export function buildMCPServer(config: GatewayConfig, caller: CallerContext, db:
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     const pool = await getPool(config);
-    const healthyPool = pool.filter((ds) => !getCircuitBreaker(config).isOpen(ds.name));
+    const cb = getCircuitBreaker(config, redis);
+    const open = await Promise.all(pool.map((ds) => cb.isOpen(ds.name)));
+    const healthyPool = pool.filter((_, i) => !open[i]);
     const serverTools = await Promise.allSettled(
       healthyPool.map(async (ds) => {
         const result = await ds.client.listTools();
@@ -73,7 +81,9 @@ export function buildMCPServer(config: GatewayConfig, caller: CallerContext, db:
 
   server.setRequestHandler(ListResourcesRequestSchema, async () => {
     const pool = await getPool(config);
-    const healthyPool = pool.filter((ds) => !getCircuitBreaker(config).isOpen(ds.name));
+    const cb = getCircuitBreaker(config, redis);
+    const open = await Promise.all(pool.map((ds) => cb.isOpen(ds.name)));
+    const healthyPool = pool.filter((_, i) => !open[i]);
     const serverResources = await Promise.allSettled(
       healthyPool.map(async (ds) => {
         const result = await ds.client.listResources();
@@ -105,7 +115,7 @@ export function buildMCPServer(config: GatewayConfig, caller: CallerContext, db:
       throw new Error(`Permission denied: caller "${caller.callerId}" cannot call "${req.params.name}"`);
     }
 
-    if (!getKeyRateLimiter(config).check(caller.callerId)) {
+    if (!await getKeyRateLimiter(config, redis).checkAsync(caller.callerId)) {
       await writeAuditEvent(db, {
         callerId: caller.callerId,
         keyId: caller.keyId,
@@ -117,7 +127,8 @@ export function buildMCPServer(config: GatewayConfig, caller: CallerContext, db:
       });
       throw new Error(`Rate limit exceeded for caller "${caller.callerId}"`);
     }
-    if (!getServerRateLimiter(config).check(serverName)) {
+
+    if (!await getServerRateLimiter(config, redis).checkAsync(serverName)) {
       await writeAuditEvent(db, {
         callerId: caller.callerId,
         keyId: caller.keyId,
@@ -130,7 +141,7 @@ export function buildMCPServer(config: GatewayConfig, caller: CallerContext, db:
       throw new Error(`Rate limit exceeded for server "${serverName}"`);
     }
 
-    if (getCircuitBreaker(config).isOpen(serverName)) {
+    if (await getCircuitBreaker(config, redis).isOpen(serverName)) {
       throw new Error(`Server "${serverName}" is currently unavailable (circuit open)`);
     }
 
@@ -141,7 +152,7 @@ export function buildMCPServer(config: GatewayConfig, caller: CallerContext, db:
     const start = Date.now();
     try {
       const result = await ds.client.callTool({ name: tool, arguments: req.params.arguments });
-      getCircuitBreaker(config).recordSuccess(serverName);
+      await getCircuitBreaker(config, redis).recordSuccess(serverName);
       await writeAuditEvent(db, {
         callerId: caller.callerId,
         keyId: caller.keyId,
@@ -154,8 +165,7 @@ export function buildMCPServer(config: GatewayConfig, caller: CallerContext, db:
       });
       return result;
     } catch (err) {
-      getCircuitBreaker(config).recordFailure(serverName);
-      // Don't let audit write failure mask the original error
+      await getCircuitBreaker(config, redis).recordFailure(serverName);
       writeAuditEvent(db, {
         callerId: caller.callerId,
         keyId: caller.keyId,
@@ -165,7 +175,7 @@ export function buildMCPServer(config: GatewayConfig, caller: CallerContext, db:
         latencyMs: Date.now() - start,
         status: "error",
         errorMessage: err instanceof Error ? err.message : String(err),
-      }).catch(() => {}); // fire-and-forget on error path
+      }).catch(() => {});
       throw err;
     }
   });

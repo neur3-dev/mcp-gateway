@@ -27,24 +27,24 @@ describe("RateLimiter", () => {
 import { CircuitBreaker } from "../src/middleware/circuit-breaker";
 
 describe("CircuitBreaker", () => {
-  it("starts CLOSED (healthy)", () => {
+  it("starts CLOSED (healthy)", async () => {
     const cb = new CircuitBreaker({ failureThreshold: 3, resetTimeoutMs: 1000 });
-    expect(cb.isOpen("server-1")).toBe(false);
+    expect(await cb.isOpen("server-1")).toBe(false);
   });
 
-  it("opens after hitting failure threshold", () => {
+  it("opens after hitting failure threshold", async () => {
     const cb = new CircuitBreaker({ failureThreshold: 3, resetTimeoutMs: 1000 });
-    cb.recordFailure("server-1");
-    cb.recordFailure("server-1");
-    cb.recordFailure("server-1");
-    expect(cb.isOpen("server-1")).toBe(true);
+    await cb.recordFailure("server-1");
+    await cb.recordFailure("server-1");
+    await cb.recordFailure("server-1");
+    expect(await cb.isOpen("server-1")).toBe(true);
   });
 
-  it("resets to CLOSED on success", () => {
+  it("resets to CLOSED on success", async () => {
     const cb = new CircuitBreaker({ failureThreshold: 3, resetTimeoutMs: 1000 });
-    cb.recordFailure("server-1");
-    cb.recordFailure("server-1");
-    cb.recordSuccess("server-1");
-    expect(cb.isOpen("server-1")).toBe(false);
+    await cb.recordFailure("server-1");
+    await cb.recordFailure("server-1");
+    await cb.recordSuccess("server-1");
+    expect(await cb.isOpen("server-1")).toBe(false);
   });
 });

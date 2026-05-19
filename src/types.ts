@@ -46,4 +46,5 @@ export interface GatewayConfig {
   servers: ServerConfig[];
   circuit_breaker: { failure_threshold: number; reset_timeout_ms: number };
   audit: { enabled: boolean; redact_args: boolean; postgres_url: string };
+  redis?: { url: string };
 }

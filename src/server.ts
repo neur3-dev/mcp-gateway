@@ -2,6 +2,7 @@ import { Elysia } from "elysia";
 import { cors } from "@elysiajs/cors";
 import { loadConfig } from "./config/loader";
 import { getDb } from "./db/client";
+import { getRedis } from "./redis/client";
 import { verifyApiKey } from "./auth/api-keys";
 import { mountSSERoutes } from "./transport/sse-server";
 import { buildMCPServer, sweepRateLimiters } from "./multiplexer/router";
@@ -9,6 +10,7 @@ import { buildMCPServer, sweepRateLimiters } from "./multiplexer/router";
 const configPath = process.env.CONFIG_PATH ?? "./config.yaml";
 const config = loadConfig(configPath);
 const db = getDb(config.audit.postgres_url);
+const redis = getRedis(config.redis?.url ?? process.env.REDIS_URL);
 
 const app = new Elysia().use(cors());
 
@@ -22,7 +24,7 @@ if (process.env.NODE_ENV !== "production") {
 
 mountSSERoutes(
   app as Parameters<typeof mountSSERoutes>[0],
-  (caller) => buildMCPServer(config, caller, db),
+  (caller) => buildMCPServer(config, caller, db, redis),
   (rawKey) => verifyApiKey(db, rawKey)
 );
 

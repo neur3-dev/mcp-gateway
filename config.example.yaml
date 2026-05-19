@@ -38,3 +38,8 @@ audit:
   enabled: true
   redact_args: false
   postgres_url: "${DATABASE_URL}"
+
+# Optional — enables Redis-backed rate limiting and circuit breaker state.
+# Falls back to in-memory if omitted or if Redis is unreachable.
+redis:
+  url: "${REDIS_URL}"

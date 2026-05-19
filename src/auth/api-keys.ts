@@ -1,5 +1,5 @@
 import { hash, compare } from "bcryptjs";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull, or } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { apiKeys } from "../db/schema";
 import type { CallerContext } from "../types";
@@ -8,6 +8,11 @@ import type { getDb } from "../db/client";
 type Db = ReturnType<typeof getDb>;
 
 const PREFIX = "mgk_";
+const PREFIX_LEN = 8; // chars stored after the "mgk_" scheme prefix
+
+function extractPrefix(rawKey: string): string {
+  return rawKey.slice(PREFIX.length, PREFIX.length + PREFIX_LEN);
+}
 
 export async function createApiKey(
   db: Db,
@@ -16,11 +21,13 @@ export async function createApiKey(
   const rawKey = PREFIX + nanoid(40);
   const keyId = nanoid(16);
   const key_hash = await hash(rawKey, opts.bcryptRounds ?? 12);
+  const key_prefix = extractPrefix(rawKey);
 
   await db.insert(apiKeys).values({
     id: keyId,
     name: opts.name,
     key_hash,
+    key_prefix,
     caller_id: opts.callerId,
   });
 
@@ -33,16 +40,37 @@ export async function verifyApiKey(
 ): Promise<(CallerContext & { keyId: string }) | null> {
   if (!rawKey.startsWith(PREFIX)) return null;
 
-  const rows = await db.select().from(apiKeys).where(eq(apiKeys.revoked, false));
+  const prefix = extractPrefix(rawKey);
+
+  // Fetch only rows whose prefix matches (O(1) index scan) OR legacy rows with no prefix yet.
+  // Once all keys are rotated the isNull branch will return nothing.
+  const rows = await db
+    .select()
+    .from(apiKeys)
+    .where(
+      and(
+        eq(apiKeys.revoked, false),
+        or(eq(apiKeys.key_prefix, prefix), isNull(apiKeys.key_prefix))
+      )
+    );
 
   for (const row of rows) {
     const match = await compare(rawKey, row.key_hash);
     if (match) {
-      db.update(apiKeys)
-        .set({ last_used_at: new Date() })
-        .where(eq(apiKeys.id, row.id))
-        .execute()
-        .catch(() => {});
+      // Backfill prefix for legacy rows on first successful auth
+      if (!row.key_prefix) {
+        db.update(apiKeys)
+          .set({ key_prefix: prefix, last_used_at: new Date() })
+          .where(eq(apiKeys.id, row.id))
+          .execute()
+          .catch(() => {});
+      } else {
+        db.update(apiKeys)
+          .set({ last_used_at: new Date() })
+          .where(eq(apiKeys.id, row.id))
+          .execute()
+          .catch(() => {});
+      }
 
       return { callerId: row.caller_id, keyId: row.id, scopes: [] };
     }
