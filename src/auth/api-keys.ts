@@ -73,7 +73,7 @@ export async function verifyApiKey(
           .catch(() => {});
       }
 
-      return { callerId: row.caller_id, keyId: row.id, scopes: [] };
+      return { callerId: row.caller_id, keyId: row.id };
     }
   }
   return null;

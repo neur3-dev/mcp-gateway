@@ -1,7 +1,7 @@
 export interface CallerContext {
   callerId: string;
   keyId: string;
-  scopes: string[];   // list of allowed tool patterns, e.g. ["sqlite/*", "github/list_repos"]
+  // Access control is RBAC-based (rbac_policies table), not per-key scopes.
 }
 
 export interface MCPCall {

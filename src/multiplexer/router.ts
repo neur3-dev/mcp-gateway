@@ -365,11 +365,18 @@ export async function closePool(): Promise<void> {
 }
 
 const PROBE_TIMEOUT_MS = 3000;
+const PROBE_CACHE_TTL_MS = 10_000; // avoid hammering downstreams on frequent readiness checks
+
+let _healthCache: { results: Record<string, string>; ts: number } | null = null;
 
 export async function getDownstreamHealth(
   config: GatewayConfig,
   redis: Redis | null
 ): Promise<Record<string, string>> {
+  if (_healthCache && Date.now() - _healthCache.ts < PROBE_CACHE_TTL_MS) {
+    return _healthCache.results;
+  }
+
   const cb = getCircuitBreaker(config, redis);
   let pool: DownstreamClient[];
   try {
@@ -405,5 +412,7 @@ export async function getDownstreamHealth(
       }
     })
   );
+
+  _healthCache = { results, ts: Date.now() };
   return results;
 }
