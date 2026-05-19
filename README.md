@@ -99,7 +99,9 @@ All commands require `DATABASE_URL` to be set.
 
 ## Known Gaps
 
-- No formal release process or changelog yet. The DEPLOYMENT.md covers production deployment.
+- `0004_key_prefix_required.sql` is optional post-rotation hardening and must be applied manually after all API keys have non-null prefixes.
+- `/ready` uses cached `listTools()` probes (3s timeout, 10s cache) as the downstream health check.
+- A formal signed-release process is not yet published.
 
 ## Development
 
