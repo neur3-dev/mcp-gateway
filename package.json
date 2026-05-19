@@ -1,5 +1,6 @@
 {
   "name": "mcp-gateway",
+  "version": "0.1.0-beta",
   "module": "index.ts",
   "type": "module",
   "private": true,

@@ -1,6 +1,6 @@
 # MCP Gateway
 
-An alpha MCP multiplexing gateway for exposing multiple downstream MCP servers through one authenticated endpoint.
+A beta MCP multiplexing gateway for exposing multiple downstream MCP servers through one authenticated endpoint.
 
 It currently supports:
 
@@ -16,7 +16,7 @@ It currently supports:
 
 ## Status
 
-This repository is an alpha implementation. The runtime path is buildable, the test suite passes, and `tsc --noEmit` is clean.
+This repository is a v0.1.0-beta implementation. The runtime path is buildable, the test suite passes, and `tsc --noEmit` is clean.
 
 ## Requirements
 

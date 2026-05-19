@@ -72,7 +72,7 @@ export function buildMCPServer(
   redis: Redis | null = null
 ): Server {
   const server = new Server(
-    { name: "mcp-gateway", version: "1.0.0" },
+    { name: "mcp-gateway", version: "0.1.0-beta" },
     { capabilities: { tools: {}, resources: {} } }
   );
 

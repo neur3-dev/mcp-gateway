@@ -8,7 +8,7 @@ Until a private reporting channel is published, use GitHub's private vulnerabili
 
 ## Current Security Posture
 
-This project is an alpha implementation. Before production use, review:
+This project is a v0.1.0-beta implementation. Before production use, review:
 
 - downstream MCP server trust boundaries
 - API-key issuance and rotation procedures
