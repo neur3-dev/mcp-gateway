@@ -33,6 +33,9 @@ servers:
 circuit_breaker:
   failure_threshold: 5
   reset_timeout_ms: 30000
+  # fail_closed: true — treat servers as unavailable when Redis circuit state is unreadable.
+  # Prevents stale in-memory fallback from masking a broken downstream. Default: false.
+  fail_closed: false
 
 audit:
   enabled: true

@@ -45,7 +45,13 @@ export interface GatewayConfig {
   auth: { api_key_header: string; bcrypt_rounds: number };
   rate_limit: { default_rps: number; burst: number; per_server_rps: number };
   servers: ServerConfig[];
-  circuit_breaker: { failure_threshold: number; reset_timeout_ms: number };
+  circuit_breaker: {
+    failure_threshold: number;
+    reset_timeout_ms: number;
+    // fail_closed: true — treat servers as unavailable when Redis state is unreadable.
+    // Prevents stale in-memory fallback from masking a broken downstream. Default: false.
+    fail_closed?: boolean;
+  };
   audit: { enabled: boolean; redact_args: boolean; postgres_url: string };
   // fail_closed: deny requests when Redis is unreachable instead of falling back to in-memory.
   // Set true in production to prevent silent rate-limit bypass on Redis outage.

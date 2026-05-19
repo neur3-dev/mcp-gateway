@@ -60,6 +60,7 @@ function getCircuitBreaker(config: GatewayConfig, redis: Redis | null): CircuitB
     failureThreshold: config.circuit_breaker.failure_threshold,
     resetTimeoutMs: config.circuit_breaker.reset_timeout_ms,
     redis,
+    failClosed: config.circuit_breaker.fail_closed ?? false,
   });
   return _circuitBreaker;
 }
@@ -345,4 +346,19 @@ export async function closePool(): Promise<void> {
     await Promise.allSettled(_pool.map((ds) => ds.close()));
     _pool = null;
   }
+}
+
+export async function getDownstreamHealth(
+  config: GatewayConfig,
+  redis: Redis | null
+): Promise<Record<string, string>> {
+  const cb = getCircuitBreaker(config, redis);
+  const results: Record<string, string> = {};
+  await Promise.all(
+    config.servers.map(async (s) => {
+      const open = await cb.isOpen(s.name);
+      results[`server:${s.name}`] = open ? "circuit_open" : "ok";
+    })
+  );
+  return results;
 }

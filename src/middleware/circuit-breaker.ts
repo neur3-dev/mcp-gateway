@@ -13,11 +13,13 @@ export class CircuitBreaker {
   private failureThreshold: number;
   private resetTimeoutMs: number;
   private redis: Redis | null;
+  private failClosed: boolean;
 
-  constructor(opts: { failureThreshold: number; resetTimeoutMs: number; redis?: Redis | null }) {
+  constructor(opts: { failureThreshold: number; resetTimeoutMs: number; redis?: Redis | null; failClosed?: boolean }) {
     this.failureThreshold = opts.failureThreshold;
     this.resetTimeoutMs = opts.resetTimeoutMs;
     this.redis = opts.redis ?? null;
+    this.failClosed = opts.failClosed ?? false;
   }
 
   async isOpen(server: string): Promise<boolean> {
@@ -25,6 +27,7 @@ export class CircuitBreaker {
       try {
         return await this.isOpenRedis(server);
       } catch {
+        if (this.failClosed) return true;
         // Redis unavailable — fall back to in-memory
       }
     }

@@ -6,7 +6,7 @@ import { getDb, endDb } from "./db/client";
 import { getRedis, endRedis } from "./redis/client";
 import { verifyApiKey } from "./auth/api-keys";
 import { mountSSERoutes, closeAllSessions } from "./transport/sse-server";
-import { buildMCPServer, sweepRateLimiters, closePool } from "./multiplexer/router";
+import { buildMCPServer, sweepRateLimiters, closePool, getDownstreamHealth } from "./multiplexer/router";
 
 const configPath = process.env.CONFIG_PATH ?? "./config.yaml";
 const config = loadConfig(configPath);
@@ -47,9 +47,8 @@ app.get("/ready", async () => {
   }
 
   // Downstream server circuit breaker state
-  for (const s of config.servers) {
-    checks[`server:${s.name}`] = "unknown";
-  }
+  const serverHealth = await getDownstreamHealth(config, redis);
+  Object.assign(checks, serverHealth);
 
   const dbOk = checks.db === "ok";
   return new Response(
