@@ -51,10 +51,21 @@ app.get("/ready", async () => {
   Object.assign(checks, serverHealth);
 
   const dbOk = checks.db === "ok";
+  const redisOk = !redis || checks.redis === "ok";
+  const downstreamsOk = config.servers.every((s) => checks[`server:${s.name}`] === "ok");
+
+  const requireRedis = config.readiness?.require_redis ?? false;
+  const requireDownstreams = config.readiness?.require_downstreams ?? false;
+
+  const ready =
+    dbOk &&
+    (!requireRedis || redisOk) &&
+    (!requireDownstreams || downstreamsOk);
+
   return new Response(
-    JSON.stringify({ ...checks, status: dbOk ? "ready" : "not_ready" }),
+    JSON.stringify({ ...checks, status: ready ? "ready" : "not_ready" }),
     {
-      status: dbOk ? 200 : 503,
+      status: ready ? 200 : 503,
       headers: { "Content-Type": "application/json" },
     }
   );

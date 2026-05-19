@@ -44,6 +44,7 @@ export async function connectSSE(server: SSEServerConfig): Promise<DownstreamCli
 
   let tokenState = await fetchToken(server.oauth2, server.name);
   let inner = await buildClient(server, tokenState.token);
+  let refreshLock: Promise<void> | null = null;
 
   return {
     name: server.name,
@@ -51,9 +52,15 @@ export async function connectSSE(server: SSEServerConfig): Promise<DownstreamCli
     close: () => inner.close(),
     ensureFresh: async () => {
       if (Date.now() < tokenState.expiresAt) return;
-      await inner.close();
-      tokenState = await fetchToken(server.oauth2!, server.name);
-      inner = await buildClient(server, tokenState.token);
+      // Coalesce concurrent refreshes — all waiters share the same refresh promise.
+      if (refreshLock) return refreshLock;
+      refreshLock = (async () => {
+        if (Date.now() < tokenState.expiresAt) return; // re-check after acquiring lock
+        await inner.close();
+        tokenState = await fetchToken(server.oauth2!, server.name);
+        inner = await buildClient(server, tokenState.token);
+      })().finally(() => { refreshLock = null; });
+      return refreshLock;
     },
   };
 }

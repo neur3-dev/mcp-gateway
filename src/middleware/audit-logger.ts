@@ -18,7 +18,7 @@ export interface AuditEvent {
   method: string;
   args?: unknown;
   latencyMs?: number;
-  status: "ok" | "error" | "denied" | "rate_limited" | "circuit_open";
+  status: "ok" | "partial_ok" | "error" | "denied" | "rate_limited" | "circuit_open";
   errorMessage?: string;
 }
 

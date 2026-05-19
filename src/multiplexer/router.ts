@@ -93,6 +93,9 @@ export function buildMCPServer(
     const available = serverTools
       .filter((r): r is PromiseFulfilledResult<{ server: string; tools: any[] }> => r.status === "fulfilled")
       .map((r) => r.value);
+    const failedToolServers = healthyPool
+      .filter((_, i) => serverTools[i].status === "rejected")
+      .map((ds) => ds.name);
 
     const policies = await getCallerPolicies(db, caller.callerId);
     const allTools = aggregateTools(available);
@@ -104,7 +107,10 @@ export function buildMCPServer(
       tool: "tools/list",
       server: "gateway",
       method: "tools/list",
-      status: "ok",
+      status: failedToolServers.length > 0 ? "partial_ok" : "ok",
+      errorMessage: failedToolServers.length > 0
+        ? `${failedToolServers.length} server(s) failed: ${failedToolServers.join(", ")}`
+        : undefined,
     }, auditCfg);
 
     return { tools: allowedTools };
@@ -125,6 +131,9 @@ export function buildMCPServer(
     const available = serverResources
       .filter((r): r is PromiseFulfilledResult<{ server: string; resources: any[] }> => r.status === "fulfilled")
       .map((r) => r.value);
+    const failedResourceServers = healthyPool
+      .filter((_, i) => serverResources[i].status === "rejected")
+      .map((ds) => ds.name);
 
     const policies = await getCallerPolicies(db, caller.callerId);
     const allResources = aggregateResources(available);
@@ -139,7 +148,10 @@ export function buildMCPServer(
       tool: "resources/list",
       server: "gateway",
       method: "resources/list",
-      status: "ok",
+      status: failedResourceServers.length > 0 ? "partial_ok" : "ok",
+      errorMessage: failedResourceServers.length > 0
+        ? `${failedResourceServers.length} server(s) failed: ${failedResourceServers.join(", ")}`
+        : undefined,
     }, auditCfg);
 
     return { resources: allowedResources };

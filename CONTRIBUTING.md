@@ -14,11 +14,12 @@ Use `config.example.yaml` as the starting point for local configuration and keep
 Run the smallest relevant verification gate for the change. For general work, use:
 
 ```bash
+bun x tsc --noEmit
 bun test
 bun build src/server.ts --target=bun --outdir dist
 ```
 
-`tsc --noEmit` is currently a known gap and should be reported accurately rather than treated as a passing gate until the SSE typings and dependency declarations are cleaned up.
+All three must pass before opening a PR. The CI workflow enforces the same gates.
 
 ## Pull Requests
 

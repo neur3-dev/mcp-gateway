@@ -43,7 +43,8 @@ export async function verifyApiKey(
   const prefix = extractPrefix(rawKey);
 
   // Fetch only rows whose prefix matches (O(1) index scan) OR legacy rows with no prefix yet.
-  // Once all keys are rotated the isNull branch will return nothing.
+  // Once all keys are rotated the isNull branch returns nothing and can be dropped.
+  // Run migrations/0004_key_prefix_required.sql to enforce NOT NULL and remove this path.
   const rows = await db
     .select()
     .from(apiKeys)

@@ -56,4 +56,8 @@ export interface GatewayConfig {
   // fail_closed: deny requests when Redis is unreachable instead of falling back to in-memory.
   // Set true in production to prevent silent rate-limit bypass on Redis outage.
   redis?: { url: string; fail_closed?: boolean };
+  readiness?: {
+    require_redis?: boolean;       // fail /ready when Redis is unreachable. Default: false
+    require_downstreams?: boolean; // fail /ready when any downstream probe fails. Default: false
+  };
 }

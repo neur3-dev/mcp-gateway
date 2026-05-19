@@ -54,6 +54,12 @@ redis:
 audit:
   enabled: true
   redact_args: true       # always true in production
+
+# readiness: controls which checks must pass for /ready to return HTTP 200.
+# DB is always required; Redis and downstreams are optional (default: false).
+readiness:
+  require_redis: true
+  require_downstreams: false
 ```
 
 ## Migrations
@@ -65,6 +71,19 @@ psql "$DATABASE_URL" -f migrations/0001_initial.sql
 psql "$DATABASE_URL" -f migrations/0002_key_prefix.sql
 psql "$DATABASE_URL" -f migrations/0003_args_record.sql
 ```
+
+### Optional: Drop Legacy API Key Prefix Fallback
+
+After all API keys have been rotated (every active key has a non-null `key_prefix`), apply migration `0004` to enforce the column as NOT NULL and remove the O(n) scan fallback:
+
+```bash
+# Verify no null-prefix keys remain first
+psql "$DATABASE_URL" -c "SELECT id, name FROM api_keys WHERE key_prefix IS NULL AND revoked = FALSE;"
+# If empty, apply:
+psql "$DATABASE_URL" -f migrations/0004_key_prefix_required.sql
+```
+
+Then remove the `isNull(apiKeys.key_prefix)` branch in `src/auth/api-keys.ts`.
 
 ## nginx Reverse Proxy
 

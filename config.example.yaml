@@ -42,6 +42,12 @@ audit:
   redact_args: true   # store SHA-256 hash of args; set false only for debug (stores truncated raw JSON)
   postgres_url: "${DATABASE_URL}"
 
+# readiness: controls which checks must pass for /ready to return HTTP 200.
+# Useful for Kubernetes readiness probes. DB is always required.
+# readiness:
+#   require_redis: true        # fail if Redis is unreachable
+#   require_downstreams: false # fail if any downstream probe returns unreachable
+
 # Optional — enables Redis-backed rate limiting and circuit breaker state.
 # Falls back to in-memory if omitted or if Redis is unreachable (when fail_closed is false).
 redis:
