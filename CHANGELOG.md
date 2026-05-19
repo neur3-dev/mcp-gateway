@@ -4,17 +4,17 @@
 
 ---
 
-## [0.1.0-beta] — beta release
+## [0.1.0-beta]
 
 ### Changed
-- Removed unused `scopes` field from `CallerContext` — access control is RBAC-based, not per-key scopes
+- Removed unused `scopes` field from `CallerContext`; access control is RBAC-based, not per-key scopes
 - `getDownstreamHealth()` now caches probe results for 10 seconds to avoid hammering downstream servers during frequent Kubernetes readiness checks
 - `mgw` admin CLI binary now compiled and embedded in the Docker runtime image
 - Documented three CLI access patterns: source, `docker compose exec`, and one-off `docker run`
 
 ---
 
-## [0.1.0-alpha] — initial public release
+## [0.1.0-alpha]
 
 ### Added
 - Streamable HTTP MCP gateway (MCP 2025-03-26 spec)

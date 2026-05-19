@@ -3,7 +3,7 @@
 ## Prerequisites
 
 - Docker 24+ and Docker Compose v2
-- A reverse proxy (nginx, Caddy, or Traefik) that terminates TLS — the gateway has no built-in TLS
+- A reverse proxy (nginx, Caddy, or Traefik) that terminates TLS. The gateway has no built-in TLS.
 - PostgreSQL 16 (provided by Docker Compose or an external instance)
 - Redis 7 (provided by Docker Compose or an external instance)
 
@@ -45,7 +45,7 @@ auth:
 circuit_breaker:
   failure_threshold: 5
   reset_timeout_ms: 30000
-  fail_closed: true       # recommended for production — deny requests when Redis is unreadable
+  fail_closed: true       # recommended for production: deny requests when Redis is unreadable
 
 redis:
   url: "${REDIS_URL}"
@@ -117,7 +117,7 @@ server {
 
 ## Admin CLI
 
-The Docker image ships both the `gateway` server binary and a `mgw` admin CLI binary. Access control uses RBAC policies, not per-key scopes — a key identifies a caller; policies grant that caller access to specific tool patterns.
+The Docker image ships both the `gateway` server binary and a `mgw` admin CLI binary. Access control uses RBAC policies, not per-key scopes. A key identifies a caller; policies grant that caller access to specific tool patterns.
 
 ### From source
 
@@ -169,8 +169,8 @@ docker run --rm \
 
 | Endpoint | Purpose |
 |---|---|
-| `GET /health` | Liveness probe — returns `{ status: "ok" }` immediately |
-| `GET /ready` | Readiness probe — checks DB, Redis (if configured), and each downstream MCP server via `listTools()` with a 3-second timeout |
+| `GET /health` | Liveness probe. Returns `{ status: "ok" }` immediately. |
+| `GET /ready` | Readiness probe. Checks DB, Redis (if configured), and each downstream MCP server via `listTools()` with a 3-second timeout. |
 
 The `/ready` response looks like:
 
