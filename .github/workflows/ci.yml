@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: typecheck + test
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: gateway
+          POSTGRES_PASSWORD: gateway
+          POSTGRES_DB: mcp_gateway_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U gateway"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        run: bun x tsc --noEmit
+
+      - name: Apply migrations
+        env:
+          PGPASSWORD: gateway
+        run: |
+          psql -h localhost -U gateway -d mcp_gateway_test -f migrations/0001_initial.sql
+          psql -h localhost -U gateway -d mcp_gateway_test -f migrations/0002_key_prefix.sql
+          psql -h localhost -U gateway -d mcp_gateway_test -f migrations/0003_args_record.sql
+
+      - name: Run tests
+        env:
+          DATABASE_URL: postgres://gateway:gateway@localhost:5432/mcp_gateway_test
+        run: bun test
+
+      - name: Build
+        run: bun build src/server.ts --target bun --outdir dist

@@ -6,6 +6,7 @@ export interface DownstreamClient {
   client: Client;
   name: string;
   close: () => Promise<void>;
+  ensureFresh?: () => Promise<void>;
 }
 
 export async function connectStdio(server: StdioServerConfig): Promise<DownstreamClient> {

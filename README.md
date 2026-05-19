@@ -99,7 +99,7 @@ All commands require `DATABASE_URL` to be set.
 
 ## Known Gaps
 
-- This alpha does not yet ship a full operator runbook or release process.
+- No formal release process or changelog yet. The DEPLOYMENT.md covers production deployment.
 
 ## Development
 

@@ -102,19 +102,19 @@ Manage API keys, RBAC policies, and audit logs via the CLI:
 
 ```bash
 # Create an API key scoped to specific servers
-bun run cli keys create --caller "ci-agent" --scopes "sqlite/*,github/list_repos"
+bun run mgw keys create --caller "ci-agent" --scopes "sqlite/*,github/list_repos"
 
 # List all active keys
-bun run cli keys list
+bun run mgw keys list
 
 # Revoke a key by ID
-bun run cli keys revoke <key-id>
+bun run mgw keys revoke <key-id>
 
 # Add an RBAC policy
-bun run cli policy add --caller "ci-agent" --pattern "sqlite/*"
+bun run mgw policy add --caller "ci-agent" --pattern "sqlite/*"
 
 # View recent audit entries
-bun run cli audit list --caller "ci-agent" --limit 50
+bun run mgw audit list --caller "ci-agent" --limit 50
 ```
 
 ## Health Endpoints

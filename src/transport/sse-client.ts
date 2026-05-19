@@ -1,35 +1,59 @@
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import type { SSEServerConfig } from "../types";
+import type { SSEServerConfig, OAuth2Config } from "../types";
 import type { DownstreamClient } from "./stdio-client";
 
-export async function connectSSE(server: SSEServerConfig): Promise<DownstreamClient> {
+const TOKEN_REFRESH_BUFFER_MS = 60_000; // refresh 60s before expiry
+
+interface TokenState {
+  token: string;
+  expiresAt: number; // absolute ms timestamp
+}
+
+async function fetchToken(cfg: OAuth2Config, serverName: string): Promise<TokenState> {
+  const resp = await fetch(cfg.token_url, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "client_credentials",
+      client_id: cfg.client_id,
+      client_secret: cfg.client_secret,
+      scope: cfg.scopes.join(" "),
+    }),
+  });
+  if (!resp.ok) throw new Error(`OAuth2 token fetch failed for server "${serverName}": ${resp.status}`);
+  const body = (await resp.json()) as { access_token: string; expires_in?: number };
+  const ttlMs = (body.expires_in ?? 3600) * 1000;
+  return { token: body.access_token, expiresAt: Date.now() + ttlMs - TOKEN_REFRESH_BUFFER_MS };
+}
+
+async function buildClient(server: SSEServerConfig, token?: string): Promise<{ client: Client; close: () => Promise<void> }> {
   const headers: Record<string, string> = { ...(server.headers ?? {}) };
-
-  if (server.oauth2) {
-    const { token_url, client_id, client_secret, scopes } = server.oauth2;
-    const resp = await fetch(token_url, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        grant_type: "client_credentials",
-        client_id,
-        client_secret,
-        scope: scopes.join(" "),
-      }),
-    });
-    if (!resp.ok) throw new Error(`OAuth2 token fetch failed for server "${server.name}": ${resp.status}`);
-    const { access_token } = (await resp.json()) as { access_token: string };
-    headers["Authorization"] = `Bearer ${access_token}`;
-  }
-
+  if (token) headers["Authorization"] = `Bearer ${token}`;
   const transport = new SSEClientTransport(new URL(server.url), { requestInit: { headers } });
   const client = new Client({ name: "mcp-gateway", version: "1.0.0" });
   await client.connect(transport);
+  return { client, close: () => client.close() };
+}
+
+export async function connectSSE(server: SSEServerConfig): Promise<DownstreamClient> {
+  if (!server.oauth2) {
+    const { client, close } = await buildClient(server);
+    return { client, name: server.name, close };
+  }
+
+  let tokenState = await fetchToken(server.oauth2, server.name);
+  let inner = await buildClient(server, tokenState.token);
 
   return {
-    client,
     name: server.name,
-    close: () => client.close(),
+    get client() { return inner.client; },
+    close: () => inner.close(),
+    ensureFresh: async () => {
+      if (Date.now() < tokenState.expiresAt) return;
+      await inner.close();
+      tokenState = await fetchToken(server.oauth2!, server.name);
+      inner = await buildClient(server, tokenState.token);
+    },
   };
 }

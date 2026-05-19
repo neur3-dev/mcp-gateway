@@ -208,6 +208,8 @@ export function buildMCPServer(
     const ds = pool.find((d) => d.name === serverName);
     if (!ds) throw new Error(`Unknown server: "${serverName}"`);
 
+    await ds.ensureFresh?.();
+
     const start = Date.now();
     try {
       const result = await ds.client.callTool({ name: tool, arguments: req.params.arguments });
@@ -303,6 +305,8 @@ export function buildMCPServer(
     const ds = pool.find((d) => d.name === serverName);
     if (!ds) throw new Error(`Unknown server: "${serverName}"`);
 
+    await ds.ensureFresh?.();
+
     const start = Date.now();
     try {
       const result = await ds.client.readResource({ uri });
@@ -348,16 +352,45 @@ export async function closePool(): Promise<void> {
   }
 }
 
+const PROBE_TIMEOUT_MS = 3000;
+
 export async function getDownstreamHealth(
   config: GatewayConfig,
   redis: Redis | null
 ): Promise<Record<string, string>> {
   const cb = getCircuitBreaker(config, redis);
+  let pool: DownstreamClient[];
+  try {
+    pool = await getPool(config);
+  } catch {
+    const out: Record<string, string> = {};
+    config.servers.forEach((s) => { out[`server:${s.name}`] = "not_connected"; });
+    return out;
+  }
+
   const results: Record<string, string> = {};
   await Promise.all(
     config.servers.map(async (s) => {
-      const open = await cb.isOpen(s.name);
-      results[`server:${s.name}`] = open ? "circuit_open" : "ok";
+      if (await cb.isOpen(s.name)) {
+        results[`server:${s.name}`] = "circuit_open";
+        return;
+      }
+      const ds = pool.find((d) => d.name === s.name);
+      if (!ds) {
+        results[`server:${s.name}`] = "not_connected";
+        return;
+      }
+      try {
+        await Promise.race([
+          ds.client.listTools(),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error("probe timeout")), PROBE_TIMEOUT_MS)
+          ),
+        ]);
+        results[`server:${s.name}`] = "ok";
+      } catch (err) {
+        results[`server:${s.name}`] = `unreachable: ${err instanceof Error ? err.message : String(err)}`;
+      }
     })
   );
   return results;

@@ -40,7 +40,10 @@ export class CircuitBreaker {
         await this.redis.hmset(`cb:${server}`, { state: "CLOSED", failures: 0 });
         await this.redis.hdel(`cb:${server}`, "opened_at");
         return;
-      } catch { /* fall through */ }
+      } catch {
+        if (this.failClosed) return; // don't corrupt in-memory state when Redis is the authority
+        /* fall through */
+      }
     }
     const s = this.getInMemoryState(server);
     s.state = "CLOSED";
@@ -53,7 +56,10 @@ export class CircuitBreaker {
       try {
         await this.recordFailureRedis(server);
         return;
-      } catch { /* fall through */ }
+      } catch {
+        if (this.failClosed) return; // don't corrupt in-memory state when Redis is the authority
+        /* fall through */
+      }
     }
     this.recordFailureInMemory(server);
   }
